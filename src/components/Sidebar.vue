@@ -121,7 +121,8 @@ function openMenu(session, event) {
 
 function openProjectMenu(project, event) {
   event.stopPropagation()
-  if (!project.cwd) return
+  // 无 cwd 且无会话则没有可用操作，不弹菜单
+  if (!project.cwd && !(project.sessionCount > 0)) return
   sidebarMenu.value.session = null
   if (event.type === 'contextmenu') {
     projectMenu.value = { project, style: { left: event.clientX + 'px', top: event.clientY + 'px' } }
@@ -322,13 +323,13 @@ const filteredProjects = computed(() => {
     <div class="sidebar-list">
       <template v-if="filteredProjects.length > 0">
         <div v-for="project in filteredProjects" :key="project.name" class="project-group">
-          <div class="project-item" @click="emit('toggle-project', project.name, filterOnlyMemory)" @contextmenu.prevent="openProjectMenu(project, $event)">
+          <div class="project-item" :class="{ 'has-menu': project.cwd || project.sessionCount > 0 }" @click="emit('toggle-project', project.name, filterOnlyMemory)" @contextmenu.prevent="openProjectMenu(project, $event)">
             <span class="expand-icon">{{ expandedProjects[project.name] ? '▾' : '▸' }}</span>
             <IconFolder class="folder-icon" />
             <span v-if="project.provider" class="provider-badge" :style="{ background: providerColor(project.provider) }">{{ PROVIDER_SHORT[project.provider] || '' }}</span>
             <span class="project-name" :title="project.displayName">{{ shortenPath(project.displayName) }}</span>
             <span v-if="!filterOnlyMemory" class="session-count">{{ project.sessionsLoaded ? project.sessions.length : project.sessionCount }}</span>
-            <button v-if="project.cwd" class="project-more-btn" @click.stop="openProjectMenu(project, $event)" title="更多操作">
+            <button v-if="project.cwd || project.sessionCount > 0" class="project-more-btn" @click.stop="openProjectMenu(project, $event)" title="更多操作">
               <IconMore />
             </button>
           </div>
@@ -735,6 +736,7 @@ const filteredProjects = computed(() => {
 }
 .project-name {
   flex: 1;
+  min-width: 0;
   font-weight: 600;
   font-size: 14px;
   overflow: hidden;
@@ -768,10 +770,10 @@ const filteredProjects = computed(() => {
   opacity: 0.5;
   flex-shrink: 0;
 }
-.project-item:hover .project-more-btn {
+.project-item.has-menu:hover .project-more-btn {
   display: flex;
 }
-.project-item:hover .session-count {
+.project-item.has-menu:hover .session-count {
   display: none;
 }
 .project-more-btn:hover {
