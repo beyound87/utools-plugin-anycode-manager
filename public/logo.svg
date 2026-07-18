@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3E4C6E"/>
+      <stop offset="100%" stop-color="#222A3D"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1E2536"/>
+      <stop offset="100%" stop-color="#151A26"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 圆角背景 -->
+  <rect width="256" height="256" rx="52" fill="url(#bg)"/>
+
+  <!-- 终端窗口 -->
+  <rect x="34" y="46" width="188" height="164" rx="18" fill="url(#screen)"/>
+
+  <!-- 标题栏红绿灯 -->
+  <circle cx="57" cy="67" r="6" fill="#FF5F57"/>
+  <circle cx="77" cy="67" r="6" fill="#FEBC2E"/>
+  <circle cx="97" cy="67" r="6" fill="#28C840"/>
+
+  <!-- 标题栏提示符 >_ -->
+  <path d="M182,61 l8,6 -8,6" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="194" y="71" width="14" height="3" rx="1.5" fill="rgba(255,255,255,0.45)"/>
+
+  <!-- 分隔线 -->
+  <rect x="34" y="88" width="188" height="2" fill="rgba(255,255,255,0.08)"/>
+
+  <!-- 会话行：4 个 CLI 用 4 种颜色 -->
+  <!-- Claude 橙 -->
+  <circle cx="62" cy="114" r="7" fill="#D97706"/>
+  <rect x="78" y="109" width="120" height="10" rx="5" fill="rgba(255,255,255,0.24)"/>
+  <!-- Codex 绿 -->
+  <circle cx="62" cy="141" r="7" fill="#10B981"/>
+  <rect x="78" y="136" width="98" height="10" rx="5" fill="rgba(255,255,255,0.20)"/>
+  <!-- Gemini 蓝 -->
+  <circle cx="62" cy="168" r="7" fill="#3B82F6"/>
+  <rect x="78" y="163" width="110" height="10" rx="5" fill="rgba(255,255,255,0.20)"/>
+  <!-- OpenCode 紫 -->
+  <circle cx="62" cy="195" r="7" fill="#8B5CF6"/>
+  <rect x="78" y="190" width="82" height="10" rx="5" fill="rgba(255,255,255,0.16)"/>
+</svg>

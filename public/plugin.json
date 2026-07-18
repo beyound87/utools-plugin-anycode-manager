@@ -1,0 +1,18 @@
+{
+  "main": "index.html",
+  "preload": "preload/services.js",
+  "logo": "logo.png",
+  "development": {
+    "main": "http://localhost:5173"
+  },
+  "features": [
+    {
+      "code": "sessions",
+      "explain": "管理 Claude Code / Codex / Gemini / OpenCode 本地会话",
+      "cmds": [
+        "AnyCode会话管理",
+        "AC会话"
+      ]
+    }
+  ]
+}

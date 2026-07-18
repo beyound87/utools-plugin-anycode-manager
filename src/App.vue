@@ -1,0 +1,800 @@
+<script setup>
+import { ref, onMounted, nextTick, watch, computed } from 'vue'
+import { useTheme } from './composables/useTheme'
+import { useSnackbar } from './composables/useSnackbar'
+import { useDisplayMessages } from './composables/useMessageParser'
+import { IconChevronLeft, IconChevronRight } from './components/icons'
+import Sidebar from './components/Sidebar.vue'
+import SessionView from './components/SessionView.vue'
+import MemoryView from './components/MemoryView.vue'
+import RenameDialog from './components/RenameDialog.vue'
+import DeleteConfirmDialog from './components/DeleteConfirmDialog.vue'
+import ForkDialog from './components/ForkDialog.vue'
+import ImagePreview from './components/ImagePreview.vue'
+import SettingsDrawer from './components/SettingsDrawer.vue'
+import SnackBar from './components/SnackBar.vue'
+
+const { isDark, initThemeListener } = useTheme()
+const { showSnackbar } = useSnackbar()
+
+// State
+const projects = ref([])
+const projectsLoaded = ref(false)
+const expandedProjects = ref({})
+const selectedSession = ref(null)
+const sessionContent = ref([])
+const loading = ref(false)
+const selectedMemory = ref(null)
+const memoryFiles = ref([])
+const memoryLoading = ref(false)
+const searchQuery = ref('')
+const sidebarCollapsed = ref(false)
+const showSettings = ref(false)
+const terminalCommand = ref(window.utools.dbStorage.getItem('terminalCommand') || '')
+const terminalApp = ref(window.utools.dbStorage.getItem('terminalApp') || 'auto')
+const isStandaloneWindow = ref(false)
+const sessionBroadcast = new BroadcastChannel('cc-session')
+
+// Computed
+const displayMessages = useDisplayMessages(sessionContent)
+
+// 当前会话中 toolUseId → subagent session 的映射，用于在工具调用卡片上显示"查看"链接
+const agentToolUseMap = computed(() => {
+  if (!selectedSession.value || selectedSession.value.isSubagent) return {}
+  const subagents = selectedSession.value.subagents
+  if (!subagents?.length) return {}
+  const agentById = {}
+  for (const sub of subagents) agentById[sub.agentId] = sub
+  const map = {}
+  for (const item of sessionContent.value) {
+    const agentId = item.toolUseResult?.agentId
+    if (!agentId || !agentById[agentId]) continue
+    const content = item.message?.content
+    if (!Array.isArray(content)) continue
+    for (const block of content) {
+      if (block.type === 'tool_result' && block.tool_use_id) {
+        map[block.tool_use_id] = agentById[agentId]
+        break
+      }
+    }
+  }
+  return map
+})
+
+// Refs
+const sessionViewRef = ref(null)
+const sidebarRef = ref(null)
+
+// Dialog state
+const renameDialog = ref({ show: false, session: null })
+const deleteConfirm = ref({ show: false, session: null, showHint: true })
+const batchDeleteConfirm = ref({ show: false, paths: [] })
+const projectDeleteConfirm = ref({ show: false, project: null })
+const forkDialog = ref({ show: false, item: null })
+const forkResumeConfirm = ref({ show: false, sessionId: null, cwd: null })
+const imagePreview = ref({ show: false, src: '', mediaType: '' })
+
+// Project/session operations
+function autoSelectLatestSession() {
+  if (selectedSession.value) return
+  // 找最近修改的项目，加载其会话，选中最新的一条
+  const latest = projects.value[0]
+  if (!latest) return
+  expandedProjects.value[latest.name] = true
+  loadProjectSessionsFor(latest.name)
+  // loadProjectSessionsFor 是异步的（setTimeout 0），等它完成后选中
+  setTimeout(() => {
+    const proj = projects.value.find(p => p.name === latest.name)
+    if (proj?.sessions?.length > 0) {
+      selectSession(proj.sessions[0])
+    }
+  }, 50)
+}
+
+// force=true 时清空旧 sessions（手动刷新，展示加载效果）；默认静默刷新不闪烁
+function loadProjects(force = false) {
+  const prevMap = {}
+  for (const p of projects.value) {
+    prevMap[p.name] = p
+  }
+  try {
+    const quickProjects = window.services.getProjectsQuick()
+    projects.value = quickProjects.map(p => {
+      const prev = prevMap[p.name]
+      const keep = !force && prev?.sessionsLoaded
+      return {
+        ...p,
+        sessions: keep ? prev.sessions : [],
+        sessionsLoaded: keep,
+        sessionsLoading: false
+      }
+    })
+  } catch (error) {
+    console.error('Failed to load projects:', error)
+    showSnackbar('加载项目失败', 'error')
+  }
+  projectsLoaded.value = true
+  const skipSessionLoad = sidebarRef.value?.filterOnlyMemory?.value
+  for (const p of projects.value) {
+    if (!skipSessionLoad && (p.sessionsLoaded || expandedProjects.value[p.name])) {
+      loadProjectSessionsFor(p.name)
+    }
+  }
+}
+
+// 异步懒加载某个项目的完整会话列表
+function loadProjectSessionsFor(name) {
+  const idx = projects.value.findIndex(p => p.name === name)
+  if (idx < 0) return
+  if (projects.value[idx].sessionsLoading) return
+  projects.value = projects.value.map((p, i) =>
+    i === idx ? { ...p, sessionsLoading: true } : p
+  )
+  setTimeout(() => {
+    const currentIdx = projects.value.findIndex(p => p.name === name)
+    if (currentIdx < 0) return
+    const proj = projects.value[currentIdx]
+    const result = window.services.loadProjectSessions(proj.path, proj.provider, proj)
+    const sessions = result.sessions || []
+    projects.value = projects.value.map((p, i) =>
+      i === currentIdx ? { ...p, sessions, sessionsLoaded: true, sessionsLoading: false } : p
+    )
+    // 更新选中会话名称
+    if (selectedSession.value) {
+      const s = sessions.find(s => s.path === selectedSession.value.path)
+      if (s) selectedSession.value = { ...selectedSession.value, name: s.name }
+    }
+  }, 0)
+}
+
+function openProjectDir(project) {
+  const cwd = project.cwd || project.sessions[0]?.cwd
+  if (cwd) window.utools.shellOpenPath(cwd)
+}
+
+function toggleProject(name, skipLoad = false) {
+  expandedProjects.value[name] = !expandedProjects.value[name]
+  if (expandedProjects.value[name] && !skipLoad) {
+    const project = projects.value.find(p => p.name === name)
+    if (project && !project.sessionsLoaded && !project.sessionsLoading) {
+      loadProjectSessionsFor(name)
+    }
+  }
+}
+
+function onFilterMemoryChange(val) {
+  if (val) {
+    // 开启仅记忆过滤：自动展开有记忆但未展开的项目（不触发会话加载）
+    for (const p of projects.value) {
+      if (p.hasMemory && !expandedProjects.value[p.name]) {
+        expandedProjects.value[p.name] = true
+      }
+    }
+  } else {
+    // 关闭过滤：为已展开但未加载会话的项目触发加载
+    for (const p of projects.value) {
+      if (expandedProjects.value[p.name] && !p.sessionsLoaded && !p.sessionsLoading) {
+        loadProjectSessionsFor(p.name)
+      }
+    }
+  }
+}
+
+function toggleAllProjects() {
+  const expand = !projects.value.every(p => expandedProjects.value[p.name])
+  for (const p of projects.value) {
+    expandedProjects.value[p.name] = expand
+    if (expand && !p.sessionsLoaded && !p.sessionsLoading) {
+      loadProjectSessionsFor(p.name)
+    }
+  }
+}
+
+// 搜索时自动加载所有未加载项目的会话
+watch(searchQuery, (q) => {
+  if (q && q.trim()) {
+    for (const p of projects.value) {
+      if (!p.sessionsLoaded && !p.sessionsLoading) {
+        loadProjectSessionsFor(p.name)
+      }
+    }
+  }
+})
+
+function loadSessionContent(path, autoScroll = false) {
+  const view = sessionViewRef.value
+  const wasAtBottom = autoScroll && view?.isScrolledToBottom()
+  try {
+    const provider = selectedSession.value?.provider
+    sessionContent.value = window.services.readSessionFile(path, provider)
+  } catch (error) {
+    console.error('Failed to load session:', error)
+  }
+  if (wasAtBottom) {
+    nextTick(() => view?.scrollToEnd())
+  }
+}
+
+function selectMemory(project) {
+  selectedMemory.value = project
+  selectedSession.value = null
+  sessionContent.value = []
+  memoryLoading.value = true
+  const result = window.services.getMemoryFiles(project.path)
+  memoryLoading.value = false
+  memoryFiles.value = result.success ? result.files : []
+}
+
+function reloadMemoryFiles() {
+  if (!selectedMemory.value) return
+  const result = window.services.getMemoryFiles(selectedMemory.value.path)
+  memoryFiles.value = result.success ? result.files : []
+}
+
+function onMemoryCleared() {
+  const name = selectedMemory.value?.name
+  selectedMemory.value = null
+  memoryFiles.value = []
+  const p = projects.value.find(p => p.name === name)
+  if (p) { p.hasMemory = false; p.memorySize = 0; p.memoryFileCount = 0 }
+}
+
+// 记忆文件变化时同步更新侧边栏的大小/数量显示
+watch(memoryFiles, (files) => {
+  if (!selectedMemory.value) return
+  const p = projects.value.find(p => p.name === selectedMemory.value.name)
+  if (!p) return
+  p.memoryFileCount = files.length
+  p.memorySize = files.reduce((sum, f) => sum + new Blob([f.content || '']).size, 0)
+  p.hasMemory = files.length > 0
+}, { deep: true })
+
+function selectSession(session) {
+  selectedMemory.value = null
+  memoryFiles.value = []
+  selectedSession.value = session
+  if (session.isSubagent) {
+    sidebarRef.value?.expandSubagents(session.parentSessionPath)
+  }
+  loading.value = true
+  loadSessionContent(session.path)
+  loading.value = false
+  nextTick(() => sessionViewRef.value?.scrollToEnd())
+  window.services.watchSessionFile(session.path, () => {
+    if (selectedSession.value?.path === session.path) {
+      loadSessionContent(session.path, true)
+    }
+    loadProjects()
+    if (selectedSession.value) {
+      for (const p of projects.value) {
+        const s = p.sessions.find(s => s.path === selectedSession.value.path)
+        if (s) { selectedSession.value = { ...selectedSession.value, name: s.name }; break }
+      }
+    }
+  })
+}
+
+function refresh() {
+  loadProjects(true)
+  showSnackbar('已刷新')
+}
+
+// Delete
+function handleDelete(session, event) {
+  if (event?.ctrlKey || event?.metaKey) {
+    doDelete(session)
+  } else {
+    deleteConfirm.value = { show: true, session, showHint: !!event }
+  }
+}
+
+function doDelete(session) {
+  if (!session) session = deleteConfirm.value.session
+  const result = window.services.deleteSession(session.path, session.provider)
+  if (result.success) {
+    showSnackbar('会话已删除')
+    if (selectedSession.value?.path === session.path ||
+        selectedSession.value?.parentSessionPath === session.path) {
+      window.services.unwatchSessionFile()
+      selectedSession.value = null
+      sessionContent.value = []
+      if (isStandaloneWindow.value) {
+        sessionBroadcast.postMessage({ action: 'delete', path: session.path })
+        window.close()
+        return
+      }
+    }
+    sessionBroadcast.postMessage({ action: 'delete', path: session.path })
+    loadProjects()
+  } else {
+    showSnackbar(result.error || '删除失败', 'error')
+  }
+  deleteConfirm.value.show = false
+}
+
+// Batch delete
+function handleBatchDelete(paths) {
+  batchDeleteConfirm.value = { show: true, paths }
+}
+
+function doBatchDelete() {
+  const paths = batchDeleteConfirm.value.paths
+  const result = window.services.batchDeleteSessions(paths)
+  if (result.deleted > 0) {
+    showSnackbar(`已删除 ${result.deleted} 个会话`)
+    if (selectedSession.value && (paths.includes(selectedSession.value.path) ||
+        paths.includes(selectedSession.value.parentSessionPath))) {
+      window.services.unwatchSessionFile()
+      selectedSession.value = null
+      sessionContent.value = []
+    }
+    loadProjects()
+    sidebarRef.value?.clearMultiSelect()
+  }
+  if (result.errors?.length) showSnackbar(`${result.errors.length} 个失败`, 'error')
+  batchDeleteConfirm.value.show = false
+}
+
+// Delete project sessions
+function handleDeleteProjectSessions(project) {
+  projectDeleteConfirm.value = { show: true, project }
+}
+
+function doDeleteProjectSessions() {
+  const project = projectDeleteConfirm.value.project
+  if (!project) return
+  const result = window.services.deleteProjectSessions(project.path, project.provider)
+  if (result.deleted > 0) {
+    showSnackbar(`已删除 ${result.deleted} 个会话`)
+    if (selectedSession.value) {
+      const p = projects.value.find(p => p.name === project.name)
+      if (p?.sessions?.some(s => s.path === selectedSession.value.path)) {
+        window.services.unwatchSessionFile()
+        selectedSession.value = null
+        sessionContent.value = []
+      }
+    }
+    loadProjects()
+  }
+  if (result.errors?.length) showSnackbar(`${result.errors.length} 个失败`, 'error')
+  projectDeleteConfirm.value.show = false
+}
+
+// Rename
+function startRename(session) {
+  renameDialog.value = { show: true, session }
+}
+
+function confirmRename(newName) {
+  const result = window.services.renameSession(renameDialog.value.session.path, newName, renameDialog.value.session.provider)
+  if (result.success) {
+    showSnackbar('已重命名')
+    loadProjects()
+  } else {
+    showSnackbar(result.error || '重命名失败', 'error')
+  }
+  renameDialog.value.show = false
+}
+
+// Fork
+function startFork(item) {
+  forkDialog.value = { show: true, item, isSummary: false }
+}
+
+function startSummaryFork(item) {
+  forkDialog.value = { show: true, item, isSummary: true }
+}
+
+function confirmFork(name) {
+  const { item, isSummary } = forkDialog.value
+  const cwd = selectedSession.value?.cwd || ''
+  let result
+  if (isSummary) {
+    result = window.services.forkSummarySession(selectedSession.value.path, item.uuid, name, selectedSession.value.provider)
+  } else {
+    const cutoffUuid = item.lastUuid || item.uuid
+    result = window.services.forkSession(selectedSession.value.path, cutoffUuid, name, selectedSession.value.provider)
+  }
+  if (result.success) {
+    loadProjects()
+    forkResumeConfirm.value = { show: true, sessionId: result.sessionId, cwd }
+  } else {
+    showSnackbar(result.error || 'Fork 失败', 'error')
+  }
+  forkDialog.value.show = false
+}
+
+async function resumeForkedSession() {
+  const { sessionId, cwd } = forkResumeConfirm.value
+  forkResumeConfirm.value.show = false
+  try {
+    await window.services.resumeSession(sessionId, cwd, terminalCommand.value, terminalApp.value, selectedSession.value?.provider)
+    showSnackbar('已在终端中打开')
+  } catch (e) {
+    showSnackbar('打开终端失败：' + (e.message || e), 'error')
+  }
+}
+
+// New session in terminal
+async function newSessionForProject(project) {
+  const cwd = project.cwd || project.sessions?.[0]?.cwd || ''
+  try {
+    await window.services.newSession(cwd, terminalCommand.value, terminalApp.value, project.provider)
+    showSnackbar('已在终端中打开')
+  } catch (e) {
+    showSnackbar('打开终端失败：' + (e.message || e), 'error')
+  }
+}
+
+// Resume
+async function resumeSession(session) {
+  const s = session || selectedSession.value
+  if (!s?.sessionId) return
+  try {
+    await window.services.resumeSession(s.sessionId, s.cwd || '', terminalCommand.value, terminalApp.value, s.provider)
+    showSnackbar('已在终端中打开')
+  } catch (e) {
+    showSnackbar('打开终端失败：' + (e.message || e), 'error')
+  }
+}
+
+// Toggle favorite from SessionView
+function toggleFavoriteFromView(session) {
+  if (!session?.path) return
+  const result = window.services.toggleFavorite(session.path, session.provider)
+  if (result.success) {
+    session.isFavorite = result.isFavorite
+    loadProjects()
+  }
+}
+
+// Image preview
+function openImagePreview(src, mediaType) {
+  imagePreview.value = { show: true, src, mediaType }
+}
+
+// 在新窗口中打开会话
+// 通过 localStorage 传递会话数据，子窗口 onMounted 时读取
+// 在新窗口中打开会话
+// dev 模式直接传 vite 地址，prod 模式用相对路径 index.html
+// 通过 localStorage 传递会话数据，子窗口 onMounted 时读取
+function openSessionWindow(session) {
+  if (typeof window.utools?.createBrowserWindow !== 'function') {
+    showSnackbar('当前 uTools 版本不支持多窗口', 'error')
+    return
+  }
+  const isDev = window.location.protocol !== 'file:'
+  try {
+    localStorage.setItem('__cc_pending_session', JSON.stringify(session))
+    // dev: window.html 内含 location.replace 跳转到 vite，show:true 立即显示避免时序问题
+    // prod: index.html 直接加载完整 app，callback 里再 show 避免白屏闪烁
+    const win = window.utools.createBrowserWindow(isDev ? 'window.html' : 'index.html', {
+      title: session.name || '会话详情',
+      width: 960,
+      height: 700,
+      minWidth: 600,
+      minHeight: 400,
+      show: isDev,
+      webPreferences: { preload: 'preload/services.js' }
+    }, () => {
+      if (!isDev) win.show()
+    })
+  } catch (e) {
+    localStorage.removeItem('__cc_pending_session')
+    showSnackbar('打开失败: ' + (e?.message || String(e)), 'error')
+  }
+}
+
+// Lifecycle
+onMounted(() => {
+  const windowType = window.utools.getWindowType?.() || 'main'
+  if (windowType === 'browser') {
+    isStandaloneWindow.value = true
+    initThemeListener()
+    const stored = localStorage.getItem('__cc_pending_session')
+    if (stored) {
+      localStorage.removeItem('__cc_pending_session')
+      try {
+        const session = JSON.parse(stored)
+        selectSession(session)
+        nextTick(() => { document.title = session.name || '会话详情' })
+      } catch (e) {}
+    }
+    sessionBroadcast.onmessage = ({ data }) => {
+      if (data.action === 'delete' && (
+        selectedSession.value?.path === data.path ||
+        selectedSession.value?.parentSessionPath === data.path
+      )) window.close()
+    }
+    return
+  }
+  window.utools.onPluginEnter(({ code }) => {
+    if (code === 'sessions') {
+      loadProjects()
+      autoSelectLatestSession()
+    }
+  })
+  window.utools.onPluginOut(() => {
+    window.services.unwatchSessionFile()
+  })
+  sessionBroadcast.onmessage = ({ data }) => {
+    if (data.action === 'delete') {
+      if (selectedSession.value?.path === data.path ||
+          selectedSession.value?.parentSessionPath === data.path) {
+        window.services.unwatchSessionFile()
+        selectedSession.value = null
+        sessionContent.value = []
+      }
+      loadProjects()
+    }
+  }
+  initThemeListener()
+})
+</script>
+
+<template>
+  <div class="app" :class="{ dark: isDark }">
+    <Sidebar
+      v-if="!isStandaloneWindow"
+      ref="sidebarRef"
+      :projects="projects"
+      :expanded-projects="expandedProjects"
+      :selected-session="selectedSession"
+      :selected-memory="selectedMemory"
+      :search-query="searchQuery"
+      :collapsed="sidebarCollapsed"
+      :projects-loaded="projectsLoaded"
+      @update:search-query="searchQuery = $event"
+      @toggle-project="toggleProject"
+      @toggle-all="toggleAllProjects"
+      @select-session="selectSession"
+      @rename-session="startRename"
+      @delete-session="handleDelete"
+      @batch-delete="handleBatchDelete"
+      @delete-project-sessions="handleDeleteProjectSessions"
+      @open-project-dir="openProjectDir"
+      @new-session="newSessionForProject"
+      @select-memory="selectMemory"
+      @refresh="refresh"
+      @open-settings="showSettings = true"
+      @open-session-window="openSessionWindow"
+      @resume-session="resumeSession"
+      @filter-memory-change="onFilterMemoryChange"
+    />
+
+    <!-- 侧边栏收起/展开按钮 -->
+    <button v-if="!isStandaloneWindow" class="sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed" :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'">
+      <IconChevronLeft v-if="!sidebarCollapsed" />
+      <IconChevronRight v-else />
+    </button>
+
+    <!-- 右侧内容区 -->
+    <main class="content">
+      <MemoryView
+        v-if="selectedMemory"
+        :project="selectedMemory"
+        :files="memoryFiles"
+        :loading="memoryLoading"
+        @reload="reloadMemoryFiles"
+        @cleared="onMemoryCleared"
+      />
+      <SessionView
+        v-else
+        ref="sessionViewRef"
+        :session="selectedSession"
+        :display-messages="displayMessages"
+        :loading="loading"
+        :agent-tool-use-map="agentToolUseMap"
+        :standalone="isStandaloneWindow"
+        @fork="startFork"
+        @fork-summary="startSummaryFork"
+        @resume="resumeSession"
+        @preview-image="openImagePreview"
+        @rename="startRename"
+        @delete="handleDelete"
+        @toggle-favorite="toggleFavoriteFromView"
+        @select-session="selectSession"
+        @open-session-window="openSessionWindow"
+      />
+    </main>
+
+    <!-- Dialogs -->
+    <RenameDialog
+      :show="renameDialog.show"
+      :session="renameDialog.session"
+      @confirm="confirmRename"
+      @cancel="renameDialog.show = false"
+    />
+
+    <DeleteConfirmDialog
+      :show="deleteConfirm.show"
+      :session="deleteConfirm.session"
+      :show-hint="deleteConfirm.showHint"
+      @confirm="doDelete(deleteConfirm.session)"
+      @cancel="deleteConfirm.show = false"
+    />
+
+    <DeleteConfirmDialog
+      :show="batchDeleteConfirm.show"
+      :session="{ name: batchDeleteConfirm.paths.length + ' 个会话' }"
+      :show-hint="false"
+      @confirm="doBatchDelete"
+      @cancel="batchDeleteConfirm.show = false"
+    />
+
+    <DeleteConfirmDialog
+      :show="projectDeleteConfirm.show"
+      :session="{ name: (projectDeleteConfirm.project?.displayName || '') + ' 的所有会话 (' + (projectDeleteConfirm.project?.sessionCount || 0) + ' 个)' }"
+      :show-hint="false"
+      @confirm="doDeleteProjectSessions"
+      @cancel="projectDeleteConfirm.show = false"
+    />
+
+    <ForkDialog
+      :show="forkDialog.show"
+      :desc="forkDialog.isSummary ? '仅保留此条上下文压缩记录，创建新的会话分支' : '从当前 AI 消息处截断，创建新的会话分支'"
+      @confirm="confirmFork"
+      @cancel="forkDialog.show = false"
+    />
+
+    <Transition name="fade">
+      <div v-if="forkResumeConfirm.show" class="fork-resume-overlay" @click.self="forkResumeConfirm.show = false">
+        <div class="fork-resume-card">
+          <div class="fork-resume-check">✓</div>
+          <h3 class="fork-resume-title">Fork 成功</h3>
+          <p class="fork-resume-desc">是否立即在终端中打开新会话？</p>
+          <div class="fork-resume-actions">
+            <button class="fork-resume-btn cancel" @click="forkResumeConfirm.show = false">稍后再说</button>
+            <button class="fork-resume-btn confirm" @click="resumeForkedSession">立即打开</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <ImagePreview
+      :show="imagePreview.show"
+      :src="imagePreview.src"
+      :media-type="imagePreview.mediaType"
+      @close="imagePreview.show = false"
+    />
+
+    <SettingsDrawer
+      :show="showSettings"
+      :terminal-command="terminalCommand"
+      :terminal-app="terminalApp"
+      @update:terminal-command="terminalCommand = $event"
+      @update:terminal-app="terminalApp = $event"
+      @close="showSettings = false"
+    />
+
+    <SnackBar />
+  </div>
+</template>
+
+<style scoped>
+.app {
+  display: flex;
+  height: 100vh;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f5f5f5;
+  color: #333;
+  position: relative;
+  overflow: hidden;
+}
+.app.dark {
+  background: #121212;
+  color: #e0e0e0;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  left: v-bind("sidebarCollapsed ? '0px' : '320px'");
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 48px;
+  border: none;
+  border-radius: 0 6px 6px 0;
+  background: rgba(0,0,0,0.04);
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.3;
+  padding: 0;
+  transition: left 0.2s, opacity 0.15s;
+}
+.sidebar-toggle:hover {
+  opacity: 0.8;
+  background: rgba(0,0,0,0.08);
+}
+.dark .sidebar-toggle {
+  background: rgba(255,255,255,0.06);
+}
+.dark .sidebar-toggle:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  position: relative;
+}
+
+.fork-resume-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fork-resume-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px 24px 24px;
+  width: 320px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  text-align: center;
+}
+.dark .fork-resume-card {
+  background: #2a2a2a;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.fork-resume-check {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e8f5e9;
+  color: #43a047;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+}
+.dark .fork-resume-check {
+  background: rgba(67,160,71,0.2);
+}
+.fork-resume-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.fork-resume-desc {
+  margin: 0 0 20px;
+  font-size: 13px;
+  opacity: 0.6;
+}
+.fork-resume-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+.fork-resume-btn {
+  padding: 7px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.fork-resume-btn.cancel {
+  background: rgba(0,0,0,0.06);
+  color: inherit;
+}
+.dark .fork-resume-btn.cancel {
+  background: rgba(255,255,255,0.1);
+}
+.fork-resume-btn.confirm {
+  background: #1976d2;
+  color: #fff;
+}
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+</style>
