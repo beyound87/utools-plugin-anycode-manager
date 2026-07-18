@@ -82,10 +82,10 @@ function renameSession(filePath, newTitle, providerId) {
   return p.renameSession(filePath, newTitle)
 }
 
-function resumeSession(sessionId, cwd, command, terminalApp, providerId) {
+function resumeSession(sessionId, cwd, command, terminalApp, providerId, sessionPath) {
   const p = providerId ? getProvider(providerId) : claudeProvider
   if (!p) return Promise.reject(new Error('Unknown provider'))
-  return p.resumeSession(sessionId, cwd, command, terminalApp)
+  return p.resumeSession(sessionId, cwd, command, terminalApp, sessionPath)
 }
 
 function newSession(cwd, command, terminalApp, providerId) {

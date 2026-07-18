@@ -29,13 +29,19 @@ const currentProvider = computed(() => {
   return p ? window.services.getProvider(p) : null
 })
 
-const resumeCommandText = computed(() => {
-  const s = props.session
+// 构建完整恢复命令：cd 进项目目录 + 各 CLI 恢复命令（会话按目录存储，必须在项目目录下恢复）
+function buildResumeCommand(s) {
   if (!s?.sessionId) return s?.cwd || ''
   const provider = s.provider ? window.services.getProvider(s.provider) : null
-  if (provider?.getResumeCommand) return provider.getResumeCommand(s.sessionId)
-  return `${window.utools.dbStorage.getItem('terminalCommand') || 'claude'} --resume ${s.sessionId}`
-})
+  const resume = provider?.getResumeCommand
+    ? provider.getResumeCommand(s.sessionId, undefined, s.path)
+    : `${window.utools.dbStorage.getItem('terminalCommand') || 'claude'} --resume ${s.sessionId}`
+  if (!s.cwd) return resume
+  const cd = window.utools.isWindows() ? `cd /d "${s.cwd}"` : `cd "${s.cwd}"`
+  return `${cd} && ${resume}`
+}
+
+const resumeCommandText = computed(() => buildResumeCommand(props.session))
 const { toggleCollapse, isCollapsed, forceExpand } = useCollapse()
 const { isDark } = useTheme()
 const { searchVisible, searchText, matchIndex, matchCount, caseSensitive, wholeWord, useRegex, openSearch, closeSearch, doSearch, nextMatch, prevMatch } = useSearch()
@@ -307,12 +313,8 @@ function copyMessageText(item) {
 }
 
 function copyResumeCommand() {
-  const session = props.session
-  if (!session?.sessionId) return
-  const provider = session.provider ? window.services.getProvider(session.provider) : null
-  const cmd = provider?.getResumeCommand
-    ? provider.getResumeCommand(session.sessionId)
-    : `${window.utools.dbStorage.getItem('terminalCommand') || 'claude'} --resume ${session.sessionId}`
+  const cmd = buildResumeCommand(props.session)
+  if (!cmd) return
   window.utools.copyText(cmd)
   showSnackbar('已复制恢复命令')
 }

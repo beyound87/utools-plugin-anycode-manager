@@ -199,7 +199,10 @@ function menuCopyResumeCmd() {
   const s = sidebarMenu.value.session; closeMenu()
   if (!s?.sessionId) return
   const p = s.provider ? window.services.getProvider(s.provider) : null
-  const cmd = p?.getResumeCommand ? p.getResumeCommand(s.sessionId) : `claude --resume ${s.sessionId}`
+  const resume = p?.getResumeCommand ? p.getResumeCommand(s.sessionId, undefined, s.path) : `claude --resume ${s.sessionId}`
+  const cmd = s.cwd
+    ? `${window.utools.isWindows() ? 'cd /d' : 'cd'} "${s.cwd}" && ${resume}`
+    : resume
   window.utools.copyText(cmd)
   showSnackbar('已复制恢复命令')
 }

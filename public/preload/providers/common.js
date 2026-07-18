@@ -88,7 +88,9 @@ function launchInTerminal(cmd, cwd, terminalApp) {
   }
 
   if (platform === 'win32') {
-    return spawnDetached(`start cmd /c "${cmd}"`, { cwd: workDir })
+    // start "" /d "<dir>" 设定新窗口工作目录（会话按目录存储，必须在项目目录下恢复）
+    // /k 保持窗口打开：claude 退出后 shell 仍在，出错也能看到信息
+    return spawnDetached(`start "" /d "${workDir}" cmd /k "${cmd}"`, { cwd: workDir })
   } else if (platform === 'darwin') {
     const escaped = cmd.replace(/"/g, '\\"')
     const escapedDir = workDir.replace(/"/g, '\\"')

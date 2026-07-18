@@ -201,6 +201,13 @@ function readSessionMeta(filePath) {
     }
     const isFavorite = tailItems.some(item => item.type === 'custom-favorite')
 
+    // cwd 兜底：头部前几条可能是 summary/last-prompt 无 cwd，从尾部消息补取（每条消息都带 cwd）
+    if (!cwd) {
+      for (let k = tailItems.length - 1; k >= 0; k--) {
+        if (tailItems[k].cwd) { cwd = tailItems[k].cwd; break }
+      }
+    }
+
     // 会话名：优先真实用户消息，逐级扩读尾部（512KB→4MB→16MB）；都没有再退回 ai-title
     let name = extractSessionName(tailItems, '')
     let biggestItems = tailItems

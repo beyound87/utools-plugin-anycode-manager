@@ -271,13 +271,30 @@ function deleteSession(filePath) {
   }
 }
 
-function getResumeCommand(sessionId, command) {
-  // Gemini CLI 恢复需要在项目目录下执行 gemini --resume
-  return `${command || 'gemini'} --resume`
+function deleteProjectSessions(projectPath) {
+  try {
+    const files = fs.readdirSync(projectPath).filter(f => f.endsWith('.jsonl') || f.endsWith('.json'))
+    let deleted = 0
+    const errors = []
+    for (const file of files) {
+      try { fs.unlinkSync(path.join(projectPath, file)); deleted++ }
+      catch (e) { errors.push(file + ': ' + e.message) }
+    }
+    return { success: errors.length === 0, deleted, errors }
+  } catch (error) {
+    return { success: false, deleted: 0, errors: [error.message] }
+  }
 }
 
-function resumeSession(sessionId, cwd, command, terminalApp) {
-  return launchInTerminal(getResumeCommand(sessionId, command), cwd, terminalApp)
+function getResumeCommand(sessionId, command, sessionPath) {
+  // Gemini 无法按 UUID 恢复；有会话文件路径时用 --session-file 精确加载，否则退回 --resume latest
+  const bin = command || 'gemini'
+  if (sessionPath) return `${bin} --session-file "${sessionPath}"`
+  return `${bin} --resume latest`
+}
+
+function resumeSession(sessionId, cwd, command, terminalApp, sessionPath) {
+  return launchInTerminal(getResumeCommand(sessionId, command, sessionPath), cwd, terminalApp)
 }
 
 function newSession(cwd, command, terminalApp) {
@@ -295,6 +312,7 @@ module.exports = {
   loadProjectSessions,
   readSessionFile,
   deleteSession,
+  deleteProjectSessions,
   getResumeCommand,
   resumeSession,
   newSession,

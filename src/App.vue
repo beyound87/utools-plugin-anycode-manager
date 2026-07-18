@@ -431,7 +431,7 @@ async function resumeSession(session) {
   const s = session || selectedSession.value
   if (!s?.sessionId) return
   try {
-    await window.services.resumeSession(s.sessionId, s.cwd || '', terminalCommand.value, terminalApp.value, s.provider)
+    await window.services.resumeSession(s.sessionId, s.cwd || '', terminalCommand.value, terminalApp.value, s.provider, s.path)
     showSnackbar('已在终端中打开')
   } catch (e) {
     showSnackbar('打开终端失败：' + (e.message || e), 'error')
