@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { IconClose } from './icons'
 
 const props = defineProps({
@@ -7,9 +7,11 @@ const props = defineProps({
   sending: Boolean,
   permMode: { type: String, default: 'plan' },
   provider: { type: String, default: 'claude' },
-  cwd: { type: String, default: '' }
+  cwd: { type: String, default: '' },
+  model: { type: String, default: '' },
+  effort: { type: String, default: '' }
 })
-const emit = defineEmits(['send', 'toggle-chat', 'update:permMode', 'stop-chat', 'new-chat', 'change-cwd'])
+const emit = defineEmits(['send', 'toggle-chat', 'update:permMode', 'stop-chat', 'new-chat', 'change-cwd', 'update:model', 'update:effort'])
 
 const text = ref('')
 const images = ref([])
@@ -68,6 +70,13 @@ function addAttachments() {
 }
 
 const canSend = computed(() => !props.sending && (text.value.trim() || images.value.length > 0))
+const hasEffort = computed(() => ['codex', 'opencode'].includes(props.provider))
+const modelList = ref([])
+watch(() => props.provider, (p) => {
+  if (p && window.services?.listModels) {
+    window.services.listModels(p, (list) => { modelList.value = list || [] })
+  }
+}, { immediate: true })
 const shortCwd = computed(() => {
   const c = props.cwd || ''
   return c.length > 30 ? '...' + c.slice(-28) : c
@@ -88,6 +97,15 @@ function changeCwd() {
         <option v-for="m in PERM_MODES" :key="m.value" :value="m.value">{{ m.label }}</option>
       </select>
       <button class="composer-btn attach-btn" @click="addAttachments" title="添加文件/文件夹附件">+附件</button>
+      <input class="model-input" :value="model" @change="emit('update:model', $event.target.value)" placeholder="模型" title="模型名（留空用默认）" list="model-suggestions" />
+      <datalist id="model-suggestions"><option v-for="m in modelList" :key="m" :value="m" /></datalist>
+      <select v-if="hasEffort" class="perm-select" :value="effort" @change="emit('update:effort', $event.target.value)" title="推理 effort">
+        <option value="">默认</option>
+        <option value="low">low</option>
+        <option value="medium">medium</option>
+        <option value="high">high</option>
+        <option value="max">max</option>
+      </select>
       <span v-if="cwd" class="cwd-label" :title="cwd" @click="changeCwd">{{ shortCwd }}</span>
       <div style="flex:1"></div>
       <button class="composer-btn" @click="emit('new-chat')" title="新建对话（默认用户家目录）">新建</button>
@@ -149,6 +167,13 @@ function changeCwd() {
 :global(.dark) .composer-btn { border-color: #444; }
 :global(.dark) .composer-btn:hover { background: rgba(255,255,255,0.06); }
 .stop-btn { color: #d32f2f; border-color: #d32f2f; }
+.model-input {
+  width: 100px; padding: 3px 6px; border: 1px solid #ddd; border-radius: 4px;
+  font-size: 10px; background: inherit; color: inherit; outline: none;
+}
+.model-input:focus { border-color: #1976d2; }
+:global(.dark) .model-input { border-color: #444; }
+:global(.dark) .model-input:focus { border-color: #90caf9; }
 .cwd-label {
   font-size: 10px; opacity: 0.5; max-width: 140px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; cursor: pointer;

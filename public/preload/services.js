@@ -340,6 +340,7 @@ window.services = {
   sendChatMessage: chat.sendChatMessage,
   stopChat: chat.stopChat,
   isChatRunning: chat.isRunning,
-  newChatSession: chat.newChatSession
+  newChatSession: chat.newChatSession,
+  listModels: chat.listModels
 }
 

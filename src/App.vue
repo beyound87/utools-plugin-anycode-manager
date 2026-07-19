@@ -32,6 +32,8 @@ const loading = ref(false)
 const chatActive = ref(false)          // 是否处于对话模式
 const chatSending = ref(false)         // 当前是否有一轮进行中
 const chatPermMode = ref(window.utools.dbStorage.getItem('anycode:chatPermMode') || 'plan')
+const chatModel = ref('')
+const chatEffort = ref('')
 let chatLiveItem = null                // 流式中的 live assistant item
 let chatWatchSuspended = false
 const selectedMemory = ref(null)
@@ -466,7 +468,7 @@ function toggleChat() {
   const result = window.services.startChat({
     provider: s.provider, sessionId: s.sessionId, cwd: s.cwd || '',
     command: terminalCommand.value || undefined,
-    permissionMode: chatPermMode.value, model: undefined
+    permissionMode: chatPermMode.value, model: chatModel.value || undefined
   }, onChatEvent)
   if (!result.success) { showSnackbar('启动对话失败: ' + result.error, 'error'); stopChatSession() }
 }
@@ -1016,10 +1018,14 @@ onMounted(() => {
         :perm-mode="chatPermMode"
         :provider="selectedSession.provider"
         :cwd="chatCwd"
+        :model="chatModel"
+        :effort="chatEffort"
         @toggle-chat="toggleChat"
         @stop-chat="stopChatSession"
         @send="sendChat"
         @update:perm-mode="setChatPermMode"
+        @update:model="chatModel = $event"
+        @update:effort="chatEffort = $event"
         @new-chat="startNewChat"
         @change-cwd="changeChatCwd"
       />

@@ -201,10 +201,57 @@ function pipeNdjson(proc) {
   })
 }
 
+// ============ 模型列表探测 ============
+
+// 读各 CLI 配置取 base_url + token，探测 /v1/models；失败回退预设+手动输入
+function listModels(providerId, callback) {
+  const presets = {
+    claude: ['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'claude-haiku-4-20250414'],
+    codex: ['gpt-4.1', 'o3', 'o4-mini', 'codex-mini-latest'],
+    gemini: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash'],
+    opencode: []
+  }
+
+  let baseUrl = '', authToken = ''
+  try {
+    if (providerId === 'claude') {
+      const settings = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf-8'))
+      baseUrl = settings.env?.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL || ''
+      authToken = settings.env?.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || ''
+    } else if (providerId === 'codex') {
+      const toml = fs.readFileSync(path.join(os.homedir(), '.codex', 'config.toml'), 'utf-8')
+      const m = toml.match(/base_url\s*=\s*"([^"]+)"/)
+      if (m) baseUrl = m[1]
+      const km = toml.match(/api_key\s*=\s*"([^"]+)"/)
+      if (km) authToken = km[1]
+    }
+  } catch (e) {}
+
+  if (!baseUrl) { callback(presets[providerId] || []); return }
+
+  // 探测 /v1/models（异步，超时 5s）
+  const url = baseUrl.replace(/\/+$/, '') + '/v1/models'
+  const http = url.startsWith('https') ? require('https') : require('http')
+  const headers = authToken ? { Authorization: 'Bearer ' + authToken } : {}
+  const req = http.get(url, { headers, timeout: 5000 }, (res) => {
+    let body = ''
+    res.on('data', d => { body += d })
+    res.on('end', () => {
+      try {
+        const parsed = JSON.parse(body)
+        const ids = (parsed.data || []).map(m => m.id).filter(Boolean)
+        callback(ids.length ? ids : presets[providerId] || [])
+      } catch (e) { callback(presets[providerId] || []) }
+    })
+  })
+  req.on('error', () => callback(presets[providerId] || []))
+  req.on('timeout', () => { req.destroy(); callback(presets[providerId] || []) })
+}
+
 // 新建会话（不续接任何已有会话）
 function newChatSession(opts, onEvent) {
   const newOpts = { ...opts, sessionId: undefined }
   return startChat(newOpts, onEvent)
 }
 
-module.exports = { startChat, sendChatMessage, stopChat, isRunning, newChatSession }
+module.exports = { startChat, sendChatMessage, stopChat, isRunning, newChatSession, listModels }
