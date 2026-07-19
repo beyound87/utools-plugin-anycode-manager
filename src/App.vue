@@ -610,6 +610,32 @@ function setChatPermMode(mode) {
   try { window.utools.dbStorage.setItem('anycode:chatPermMode', mode) } catch (e) {}
 }
 
+const chatCwd = computed(() => selectedSession.value?.cwd || '')
+
+function startNewChat() {
+  const p = selectedSession.value?.provider || 'claude'
+  const cwd = chatCwd.value || ''
+  stopChatSession()
+  sessionContent.value = []
+  chatActive.value = true
+  chatWatchSuspended = true
+  window.services.unwatchSessionFile()
+  const result = window.services.newChatSession({
+    provider: p, cwd, command: terminalCommand.value || undefined,
+    permissionMode: chatPermMode.value
+  }, onChatEvent)
+  if (!result.success) { showSnackbar('新建会话失败: ' + result.error, 'error'); stopChatSession() }
+}
+
+function changeChatCwd(newCwd) {
+  if (selectedSession.value) selectedSession.value = { ...selectedSession.value, cwd: newCwd }
+  if (chatActive.value) {
+    // 重启对话进程在新目录
+    stopChatSession()
+    toggleChat()
+  }
+}
+
 function refresh() {
   loadProjects(true)
   showSnackbar('已刷新')
@@ -989,10 +1015,13 @@ onMounted(() => {
         :sending="chatSending"
         :perm-mode="chatPermMode"
         :provider="selectedSession.provider"
+        :cwd="chatCwd"
         @toggle-chat="toggleChat"
         @stop-chat="stopChatSession"
         @send="sendChat"
         @update:perm-mode="setChatPermMode"
+        @new-chat="startNewChat"
+        @change-cwd="changeChatCwd"
       />
     </main>
 

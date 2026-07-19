@@ -201,4 +201,10 @@ function pipeNdjson(proc) {
   })
 }
 
-module.exports = { startChat, sendChatMessage, stopChat, isRunning }
+// 新建会话（不续接任何已有会话）
+function newChatSession(opts, onEvent) {
+  const newOpts = { ...opts, sessionId: undefined }
+  return startChat(newOpts, onEvent)
+}
+
+module.exports = { startChat, sendChatMessage, stopChat, isRunning, newChatSession }

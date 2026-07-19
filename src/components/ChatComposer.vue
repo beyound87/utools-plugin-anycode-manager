@@ -6,9 +6,10 @@ const props = defineProps({
   active: Boolean,
   sending: Boolean,
   permMode: { type: String, default: 'plan' },
-  provider: { type: String, default: 'claude' }
+  provider: { type: String, default: 'claude' },
+  cwd: { type: String, default: '' }
 })
-const emit = defineEmits(['send', 'toggle-chat', 'update:permMode', 'stop-chat'])
+const emit = defineEmits(['send', 'toggle-chat', 'update:permMode', 'stop-chat', 'new-chat', 'change-cwd'])
 
 const text = ref('')
 const images = ref([])
@@ -67,6 +68,16 @@ function addAttachments() {
 }
 
 const canSend = computed(() => !props.sending && (text.value.trim() || images.value.length > 0))
+const shortCwd = computed(() => {
+  const c = props.cwd || ''
+  return c.length > 30 ? '...' + c.slice(-28) : c
+})
+function changeCwd() {
+  try {
+    const dirs = window.utools.showOpenDialog({ title: '选择工作目录', properties: ['openDirectory'] })
+    if (dirs?.[0]) emit('change-cwd', dirs[0])
+  } catch (e) {}
+}
 </script>
 
 <template>
@@ -77,7 +88,9 @@ const canSend = computed(() => !props.sending && (text.value.trim() || images.va
         <option v-for="m in PERM_MODES" :key="m.value" :value="m.value">{{ m.label }}</option>
       </select>
       <button class="composer-btn attach-btn" @click="addAttachments" title="添加文件/文件夹附件">+附件</button>
+      <span v-if="cwd" class="cwd-label" :title="cwd" @click="changeCwd">{{ shortCwd }}</span>
       <div style="flex:1"></div>
+      <button class="composer-btn" @click="emit('new-chat')" title="新建对话（默认用户家目录）">新建</button>
       <button class="composer-btn stop-btn" @click="emit('stop-chat')" title="结束对话">结束对话</button>
     </div>
     <!-- 附件预览 -->
@@ -136,6 +149,13 @@ const canSend = computed(() => !props.sending && (text.value.trim() || images.va
 :global(.dark) .composer-btn { border-color: #444; }
 :global(.dark) .composer-btn:hover { background: rgba(255,255,255,0.06); }
 .stop-btn { color: #d32f2f; border-color: #d32f2f; }
+.cwd-label {
+  font-size: 10px; opacity: 0.5; max-width: 140px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; cursor: pointer;
+  padding: 2px 4px; border-radius: 3px;
+}
+.cwd-label:hover { opacity: 0.8; background: rgba(0,0,0,0.04); }
+:global(.dark) .cwd-label:hover { background: rgba(255,255,255,0.06); }
 .stop-btn:hover { background: rgba(211,47,47,0.08); }
 .attachment-list { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 .attachment-chip {

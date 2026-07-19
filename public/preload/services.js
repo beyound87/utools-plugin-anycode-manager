@@ -339,6 +339,7 @@ window.services = {
   startChat: chat.startChat,
   sendChatMessage: chat.sendChatMessage,
   stopChat: chat.stopChat,
-  isChatRunning: chat.isRunning
+  isChatRunning: chat.isRunning,
+  newChatSession: chat.newChatSession
 }
 
