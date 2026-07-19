@@ -289,7 +289,7 @@ function searchSessions(query, opts = {}) {
   const db = getDb()
   if (!db) return []
   try {
-    const like = '%' + query.replace(/[%_]/g, '\\$&') + '%'
+    const like = '%' + query.replace(/[\\%_]/g, '\\$&') + '%'
     // part.data 里含消息文本、工具输入输出等；join session 拿标题和目录
     const rows = db.prepare(`
       SELECT s.id, s.title, s.directory, s.time_updated,

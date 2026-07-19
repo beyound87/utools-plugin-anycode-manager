@@ -78,12 +78,20 @@ function setGlobalSearchActive(active) {
 }
 // 点击搜索结果：打开会话并触发会话内高亮
 function openSearchResult(result) {
-  const session = {
-    provider: result.provider, path: result.sessionPath, sessionId: result.sessionId,
-    name: result.name, cwd: result.cwd, isFavorite: false, subagents: []
+  // 若该会话已在加载的项目里，用真实对象（含 subagents/size/timestamp）
+  let session = null
+  for (const p of projects.value) {
+    const s = p.sessions?.find(s => s.path === result.sessionPath)
+    if (s) { session = s; break }
+  }
+  if (!session) {
+    session = applyOverride({
+      provider: result.provider, path: result.sessionPath, sessionId: result.sessionId,
+      name: result.name, cwd: result.cwd, isFavorite: false, subagents: []
+    })
   }
   pendingInSearch.value = globalSearch.value.query
-  selectSession(applyOverride(session))
+  selectSession(session, true)
 }
 const pendingInSearch = ref('')
 
@@ -147,8 +155,10 @@ const sidebarRef = ref(null)
 // 自动刷新：定时轮询 getProjectsQuick（覆盖全部 provider 含 OpenCode），仅签名变化时静默刷新
 let autoRefreshTimer = null
 let lastProjectsSig = ''
+// 只看项目/会话数量，不含 mtime：活动会话被写入（mtime 变、数量不变）由 watchSessionFile 处理，
+// 轮询只在新增/删除会话或项目时刷新，避免每 8s 全量重载已展开项目
 function projectsSignature(list) {
-  return list.map(p => `${p.provider}:${p.name}:${p.sessionCount}:${new Date(p.latestMtime).getTime()}`).join('|')
+  return list.map(p => `${p.provider}:${p.name}:${p.sessionCount}`).join('|')
 }
 function startAutoRefresh() {
   stopAutoRefresh()
@@ -263,7 +273,7 @@ function loadProjects(force = false) {
     showSnackbar('加载项目失败', 'error')
   }
   projectsLoaded.value = true
-  const skipSessionLoad = sidebarRef.value?.filterOnlyMemory?.value
+  const skipSessionLoad = sidebarRef.value?.filterOnlyMemory
   for (const p of projects.value) {
     if (!skipSessionLoad && (p.sessionsLoaded || expandedProjects.value[p.name])) {
       loadProjectSessionsFor(p.name)
@@ -398,9 +408,11 @@ watch(memoryFiles, (files) => {
   p.hasMemory = files.length > 0
 }, { deep: true })
 
-function selectSession(session) {
+function selectSession(session, fromSearch = false) {
   selectedMemory.value = null
   memoryFiles.value = []
+  // 非搜索打开时清除待搜索词，避免残留词劫持后续会话（防止每次切会话都自动开搜索/破坏分页）
+  if (!fromSearch) pendingInSearch.value = ''
   selectedSession.value = session
   // 记住上次打开的会话
   if (!session.isSubagent && !isStandaloneWindow.value) {

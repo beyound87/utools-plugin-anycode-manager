@@ -101,5 +101,6 @@ export function useCollapse() {
   }
   function expandAll() { allMode.value = 'expand'; collapsedBlocks.value = {} }
   function collapseAll() { allMode.value = 'collapse'; collapsedBlocks.value = {} }
-  return { collapsedBlocks, toggleCollapse, isCollapsed, forceExpand, expandAll, collapseAll, allMode }
+  function resetCollapse() { allMode.value = null; collapsedBlocks.value = {} }
+  return { collapsedBlocks, toggleCollapse, isCollapsed, forceExpand, expandAll, collapseAll, resetCollapse, allMode }
 }

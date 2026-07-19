@@ -52,12 +52,15 @@ function searchSessions(query, opts = {}) {
         continue
       }
       // 文件类：枚举会话，逐个 grep（各 provider 独立配额，避免会话多的平台挤掉其他平台结果）
-      let got = 0
+      // scanned 上限：罕见词不会扫全库卡死 UI（每平台最多搜最近 800 个会话）
+      let got = 0, scanned = 0
+      const SCAN_CAP = 800
       for (const proj of p.scanProjects()) {
-        if (got >= perProviderCap) break
+        if (got >= perProviderCap || scanned >= SCAN_CAP) break
         const { sessions } = p.loadProjectSessions(proj.path, proj)
         for (const s of (sessions || [])) {
-          if (got >= perProviderCap) break
+          if (got >= perProviderCap || scanned >= SCAN_CAP) break
+          scanned++
           const hit = grepSessionFile(s.path, q, opts.caseSensitive)
           if (hit) {
             got++

@@ -47,7 +47,7 @@ function buildResumeCommand(s) {
 }
 
 const resumeCommandText = computed(() => buildResumeCommand(props.session))
-const { toggleCollapse, isCollapsed, forceExpand, expandAll, collapseAll, allMode } = useCollapse()
+const { toggleCollapse, isCollapsed, forceExpand, expandAll, collapseAll, resetCollapse, allMode } = useCollapse()
 const { isDark } = useTheme()
 const { searchVisible, searchText, matchIndex, matchCount, caseSensitive, wholeWord, useRegex, openSearch, closeSearch, doSearch, nextMatch, prevMatch } = useSearch()
 const searchInputRef = ref(null)
@@ -59,7 +59,7 @@ watch(searchVisible, (v) => {
 
 // 从全局搜索结果打开会话：内容渲染后自动打开会话内搜索并高亮
 let pendingSearchDone = false
-watch(() => props.session?.path, () => { pendingSearchDone = false })
+watch(() => props.session?.path, () => { pendingSearchDone = false; resetCollapse() })
 watch(() => props.displayMessages, () => {
   if (props.pendingSearch && !pendingSearchDone && props.displayMessages?.length) {
     pendingSearchDone = true
