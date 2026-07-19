@@ -214,35 +214,60 @@ function pipeNdjson(proc) {
 
 // ============ 模型列表 ============
 
-// ponytail: 优先从配置文件直接读已配模型（不依赖网络），补常见预设
+// ponytail: 用 curl 探测 /v1/models（curl 走系统代理），失败回退配置文件里的模型
 function listModels(providerId, callback) {
-  const models = new Set()
+  let baseUrl = '', authToken = ''
+  const fallbackModels = []
   try {
     if (providerId === 'claude') {
       const settings = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf-8'))
       const env = settings.env || {}
-      // 收集所有配置的模型名
+      baseUrl = env.ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL || ''
+      authToken = env.ANTHROPIC_AUTH_TOKEN || process.env.ANTHROPIC_API_KEY || ''
       for (const k of Object.keys(env)) {
-        if (/MODEL/i.test(k) && env[k] && typeof env[k] === 'string') {
-          models.add(env[k].replace(/\[.*$/, '')) // 去掉 [1M] 等后缀
-        }
+        if (/MODEL/i.test(k) && env[k] && typeof env[k] === 'string') fallbackModels.push(env[k].replace(/\[.*$/, ''))
       }
-      if (settings.model) models.add(settings.model)
-      // 常见补充
-      for (const m of ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-haiku-4-5-20251001', 'claude-fable-5']) models.add(m)
     } else if (providerId === 'codex') {
       const toml = fs.readFileSync(path.join(os.homedir(), '.codex', 'config.toml'), 'utf-8')
-      const m = toml.match(/^model\s*=\s*"([^"]+)"/m)
-      if (m) models.add(m[1])
-      for (const preset of ['gpt-4.1', 'o3', 'o4-mini', 'gpt-5.6-sol', 'codex-mini-latest']) models.add(preset)
+      const bm = toml.match(/base_url\s*=\s*"([^"]+)"/)
+      if (bm) baseUrl = bm[1]
+      const km = toml.match(/api_key\s*=\s*"([^"]+)"/)
+      if (km) authToken = km[1]
+      const mm = toml.match(/^model\s*=\s*"([^"]+)"/m)
+      if (mm) fallbackModels.push(mm[1])
     } else if (providerId === 'gemini') {
-      for (const m of ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash']) models.add(m)
-    } else if (providerId === 'opencode') {
-      // OpenCode 模型在 provider 配置里，格式多样，先给常见的
-      for (const m of ['anthropic/claude-sonnet-4-20250514', 'openai/gpt-4.1', 'google/gemini-2.5-pro']) models.add(m)
+      fallbackModels.push('gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash')
     }
   } catch (e) {}
-  callback([...models].filter(Boolean))
+
+  const dedupedFallback = [...new Set(fallbackModels)].filter(Boolean)
+  if (!baseUrl) { callback(dedupedFallback); return }
+
+  // 读代理：优先 CLI 配置 → 环境变量 → 不设（curl 默认）
+  let proxy = ''
+  try {
+    if (providerId === 'claude') {
+      const settings = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf-8'))
+      proxy = settings.env?.HTTPS_PROXY || settings.env?.HTTP_PROXY || ''
+    }
+  } catch (e) {}
+  if (!proxy) proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy || ''
+  const url = baseUrl.replace(/\/+$/, '') + (baseUrl.includes('/v1') ? '/models' : '/v1/models')
+  const curlArgs = ['-s', '--max-time', '6']
+  if (proxy) curlArgs.push('-x', proxy)
+  if (authToken) curlArgs.push('-H', 'Authorization: Bearer ' + authToken)
+  curlArgs.push(url)
+  const proc = spawn('curl', curlArgs, { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
+  let body = ''
+  proc.stdout.on('data', d => { body += d.toString('utf-8') })
+  proc.on('exit', () => {
+    try {
+      const parsed = JSON.parse(body)
+      const ids = (parsed.data || []).map(m => m.id).filter(Boolean)
+      callback(ids.length ? ids : dedupedFallback)
+    } catch (e) { callback(dedupedFallback) }
+  })
+  proc.on('error', () => callback(dedupedFallback))
 }
 
 // 新建会话（不续接任何已有会话）
