@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { IconSettings, IconSearch, IconClose, IconCollapseAll, IconExpandAll, IconRefresh, IconFolder, IconOpenExternal, IconFile, IconEdit, IconDelete, IconSun, IconMoon, IconStar, IconStarOutline, IconCheckbox, IconCheckboxChecked, IconSubagent, IconMore, IconTerminal, IconChat, IconMemory, IconFilter, IconCopy } from './icons'
+import { IconSettings, IconSearch, IconClose, IconCollapseAll, IconExpandAll, IconRefresh, IconFolder, IconOpenExternal, IconFile, IconEdit, IconDelete, IconSun, IconMoon, IconStar, IconStarOutline, IconCheckbox, IconCheckboxChecked, IconSubagent, IconMore, IconTerminal, IconChat, IconMemory, IconFilter, IconCopy, IconFileSearch } from './icons'
 import { useTheme } from '../composables/useTheme'
 import { useSnackbar } from '../composables/useSnackbar'
 import { formatTime, formatSize, shortenPath } from '../composables/useFormat'
@@ -12,7 +12,8 @@ const props = defineProps({
   selectedMemory: Object,
   searchQuery: String,
   collapsed: Boolean,
-  projectsLoaded: Boolean
+  projectsLoaded: Boolean,
+  globalSearch: { type: Object, default: () => ({ active: false, query: '', results: [], loading: false }) }
 })
 
 const emit = defineEmits([
@@ -32,11 +33,26 @@ const emit = defineEmits([
   'resume-session',
   'filter-memory-change',
   'delete-project-sessions',
-  'toggle-favorite'
+  'toggle-favorite',
+  'global-search',
+  'global-search-active',
+  'open-search-result'
 ])
 
 const { isDark, toggleTheme } = useTheme()
 const { showSnackbar } = useSnackbar()
+
+// 全文搜索模式
+const globalMode = ref(false)
+let globalDebounce = null
+function toggleGlobalMode() {
+  globalMode.value = !globalMode.value
+  emit('global-search-active', globalMode.value)
+}
+function onGlobalInput(val) {
+  clearTimeout(globalDebounce)
+  globalDebounce = setTimeout(() => emit('global-search', val), 350)
+}
 
 // Multi-select mode
 const multiSelectMode = ref(false)
@@ -284,15 +300,29 @@ const filteredProjects = computed(() => {
       <div class="search-box">
         <IconSearch class="search-icon" />
         <input
+          v-if="!globalMode"
           class="search-input"
           :value="searchQuery"
           @input="emit('update:searchQuery', $event.target.value)"
-          placeholder="搜索会话..."
+          placeholder="搜索会话名/路径..."
         />
-        <button v-if="searchQuery" class="search-clear" @click="emit('update:searchQuery', '')">
+        <input
+          v-else
+          class="search-input"
+          :value="globalSearch.query"
+          @input="onGlobalInput($event.target.value)"
+          placeholder="全文搜索所有会话内容..."
+        />
+        <button v-if="!globalMode && searchQuery" class="search-clear" @click="emit('update:searchQuery', '')">
           <IconClose :size="14" />
         </button>
-        <button class="search-filter-btn" :class="{ active: hasActiveFilter }" @click="toggleFilterMenu" title="过滤">
+        <button v-if="globalMode && globalSearch.query" class="search-clear" @click="onGlobalInput('')">
+          <IconClose :size="14" />
+        </button>
+        <button class="search-filter-btn" :class="{ active: globalMode }" @click="toggleGlobalMode" :title="globalMode ? '切换到会话名搜索' : '切换到全文内容搜索'">
+          <IconFileSearch :size="14" />
+        </button>
+        <button v-if="!globalMode" class="search-filter-btn" :class="{ active: hasActiveFilter }" @click="toggleFilterMenu" title="过滤">
           <IconFilter :size="14" />
           <span v-if="hasActiveFilter" class="filter-dot"></span>
         </button>
@@ -320,7 +350,30 @@ const filteredProjects = computed(() => {
       <button class="batch-cancel-btn" @click="toggleMultiSelect">取消</button>
     </div>
     <div class="sidebar-list">
-      <template v-if="filteredProjects.length > 0">
+      <!-- 全文搜索结果 -->
+      <template v-if="globalMode">
+        <div v-if="globalSearch.loading" class="global-search-hint">搜索中…</div>
+        <div v-else-if="!globalSearch.query" class="global-search-hint">输入关键词搜索所有会话内容</div>
+        <div v-else-if="globalSearch.results.length === 0" class="global-search-hint">无匹配结果</div>
+        <template v-else>
+          <div class="global-search-count">{{ globalSearch.results.length }} 个会话包含匹配</div>
+          <div
+            v-for="r in globalSearch.results"
+            :key="r.provider + ':' + r.sessionPath"
+            class="search-result-item"
+            @click="emit('open-search-result', r)"
+          >
+            <div class="search-result-head">
+              <span class="provider-badge" :style="{ background: providerColor(r.provider) }">{{ PROVIDER_SHORT[r.provider] || '' }}</span>
+              <span class="search-result-name" :title="r.name">{{ r.name }}</span>
+              <span class="search-result-count">{{ r.count }}</span>
+            </div>
+            <div class="search-result-snippet">{{ r.snippet }}</div>
+            <div class="search-result-project" :title="r.projectName">{{ shortenPath(r.projectName) }}</div>
+          </div>
+        </template>
+      </template>
+      <template v-else-if="filteredProjects.length > 0">
         <div v-for="project in filteredProjects" :key="project.name" class="project-group">
           <div class="project-item" :class="{ 'has-menu': project.cwd || project.sessionCount > 0 }" @click="emit('toggle-project', project.name, filterOnlyMemory)" @contextmenu.prevent="openProjectMenu(project, $event)">
             <span class="expand-icon">{{ expandedProjects[project.name] ? '▾' : '▸' }}</span>
@@ -549,6 +602,29 @@ const filteredProjects = computed(() => {
   line-height: 16px;
   flex-shrink: 0;
 }
+/* 全文搜索结果 */
+.global-search-hint { padding: 16px 12px; text-align: center; opacity: 0.5; font-size: 12px; }
+.global-search-count { padding: 6px 12px 4px; font-size: 11px; opacity: 0.5; }
+.search-result-item {
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.13s ease;
+}
+.search-result-item:hover { background: rgba(0,0,0,0.04); }
+:global(.dark .search-result-item:hover) { background: rgba(255,255,255,0.06); }
+.search-result-head { display: flex; align-items: center; gap: 6px; }
+.search-result-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-result-count {
+  font-size: 10px; background: rgba(25,118,210,0.15); color: #1976d2;
+  padding: 0 6px; border-radius: 8px; line-height: 16px; flex-shrink: 0;
+}
+:global(.dark .search-result-count) { background: rgba(144,202,249,0.2); color: #90caf9; }
+.search-result-snippet {
+  font-size: 11px; opacity: 0.7; margin-top: 3px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.search-result-project { font-size: 10px; opacity: 0.4; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar {
   width: 320px;
   min-width: 320px;

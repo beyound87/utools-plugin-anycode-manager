@@ -19,6 +19,12 @@ export const IconSearch = (props) => icon(
   { size: 14, ...props }
 )
 
+// 全文搜索（文档+放大镜）
+export const IconFileSearch = (props) => icon(
+  'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h6.5a5.5 5.5 0 01-1.4-2H6V4h7v5h5v1.1c.72.19 1.39.49 2 .9V8l-6-6zm3.5 9a4.5 4.5 0 013.5 7.32L23.5 21 22 22.5l-2.18-2.5A4.5 4.5 0 1117.5 11zm0 2a2.5 2.5 0 100 5 2.5 2.5 0 000-5z',
+  { size: 14, ...props }
+)
+
 // Close / X
 export const IconClose = (props) => icon(
   'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',

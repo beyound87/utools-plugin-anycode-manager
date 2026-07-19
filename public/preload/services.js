@@ -1,6 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const os = require('node:os')
+const { grepSessionFile } = require('./providers/common')
 
 // Provider registry
 const claudeProvider = require('./providers/claude')
@@ -33,6 +34,45 @@ function getProjectsQuick() {
     }
   }
   return all.sort((a, b) => b.latestMtime - a.latestMtime)
+}
+
+// --- 跨会话全文搜索 ---
+// 文件类 provider（claude/codex/gemini）逐会话 grep 内容；OpenCode 用 SQL。返回匹配会话 + 片段
+function searchSessions(query, opts = {}) {
+  const q = (query || '').trim()
+  if (!q) return []
+  const limit = opts.limit || 100
+  const results = []
+  for (const p of providers) {
+    if (!p.isAvailable()) continue
+    if (results.length >= limit) break
+    try {
+      if (typeof p.searchSessions === 'function') {
+        // provider 自带搜索（OpenCode SQL）
+        results.push(...p.searchSessions(q, { limit: limit - results.length, caseSensitive: opts.caseSensitive }))
+        continue
+      }
+      // 文件类：枚举会话，逐个 grep
+      for (const proj of p.scanProjects()) {
+        if (results.length >= limit) break
+        const { sessions } = p.loadProjectSessions(proj.path, proj)
+        for (const s of (sessions || [])) {
+          if (results.length >= limit) break
+          const hit = grepSessionFile(s.path, q, opts.caseSensitive)
+          if (hit) {
+            results.push({
+              provider: p.id, projectName: proj.displayName, projectPath: proj.path,
+              sessionPath: s.path, sessionId: s.sessionId, name: s.name,
+              cwd: s.cwd, modifiedTime: s.modifiedTime, count: hit.count, snippet: hit.snippet
+            })
+          }
+        }
+      }
+    } catch (e) {
+      console.error(`Provider ${p.id} search failed:`, e)
+    }
+  }
+  return results.sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime)).slice(0, limit)
 }
 
 function loadProjectSessions(projectPath, providerId, project) {
@@ -226,6 +266,7 @@ function getAllProjects() {
 window.services = {
   getProjectsPath,
   getProjectsQuick,
+  searchSessions,
   loadProjectSessions,
   getAllProjects,
   readSessionFile,

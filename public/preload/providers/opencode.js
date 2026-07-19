@@ -284,6 +284,46 @@ function newSession(cwd, command, terminalApp) {
 
 function toggleFavorite() { return { success: false, error: 'Not supported for OpenCode' } }
 
+// 跨会话搜索：SQL LIKE 匹配 part.data（文本/工具内容都在里面），按会话聚合
+function searchSessions(query, opts = {}) {
+  const db = getDb()
+  if (!db) return []
+  try {
+    const like = '%' + query.replace(/[%_]/g, '\\$&') + '%'
+    // part.data 里含消息文本、工具输入输出等；join session 拿标题和目录
+    const rows = db.prepare(`
+      SELECT s.id, s.title, s.directory, s.time_updated,
+        COUNT(*) as cnt,
+        MAX(CASE WHEN p.data LIKE ? ESCAPE '\\' THEN p.data END) as sample
+      FROM part p JOIN session s ON p.session_id = s.id
+      WHERE p.data LIKE ? ESCAPE '\\'
+      GROUP BY s.id
+      ORDER BY s.time_updated DESC
+      LIMIT ?
+    `).all(like, like, opts.limit || 100)
+    return rows.map(r => {
+      let snippet = ''
+      try {
+        const d = JSON.parse(r.sample || '{}')
+        snippet = (d.text || d.state?.output || d.state?.input?.command || JSON.stringify(d)).toString()
+      } catch (e) { snippet = (r.sample || '').toString() }
+      const qi = snippet.toLowerCase().indexOf(query.toLowerCase())
+      if (qi >= 0) snippet = snippet.slice(Math.max(0, qi - 60), qi + query.length + 60)
+      snippet = snippet.replace(/\s+/g, ' ').trim()
+      return {
+        provider: PROVIDER_ID, projectName: r.directory, projectPath: r.directory,
+        sessionPath: r.id, sessionId: r.id, name: r.title || r.id,
+        cwd: r.directory, modifiedTime: new Date(r.time_updated), count: r.cnt, snippet
+      }
+    })
+  } catch (e) {
+    console.error('OpenCode search failed:', e)
+    return []
+  } finally {
+    db.close()
+  }
+}
+
 module.exports = {
   id: PROVIDER_ID,
   name: PROVIDER_NAME,
@@ -294,6 +334,7 @@ module.exports = {
   readSessionFile,
   deleteSession,
   deleteProjectSessions,
+  searchSessions,
   getResumeCommand,
   resumeSession,
   newSession,

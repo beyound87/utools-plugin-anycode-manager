@@ -137,4 +137,35 @@ function readSessionFileSmart(filePath) {
   return { items: parseJsonl(tailContent), truncated: true, totalSize: stat.size }
 }
 
-module.exports = { fs, path, os, isSystemText, parseJsonl, spawnDetached, launchInTerminal, readSessionFileSmart, LARGE_FILE_THRESHOLD }
+// ponytail: 会话内容 grep — 大文件只读首尾各 1MB（覆盖多数会话全文，超大文件搜首尾）
+// 直接在原始 JSONL 文本上 indexOf，返回匹配数 + 片段（清理成可读文本）
+const SEARCH_CAP = 1 * 1024 * 1024
+function grepSessionFile(filePath, query, caseSensitive) {
+  try {
+    const stat = fs.statSync(filePath)
+    let text
+    if (stat.size <= SEARCH_CAP * 2) {
+      text = fs.readFileSync(filePath, 'utf-8')
+    } else {
+      const fd = fs.openSync(filePath, 'r')
+      const head = Buffer.alloc(SEARCH_CAP), tail = Buffer.alloc(SEARCH_CAP)
+      fs.readSync(fd, head, 0, SEARCH_CAP, 0)
+      fs.readSync(fd, tail, 0, SEARCH_CAP, stat.size - SEARCH_CAP)
+      fs.closeSync(fd)
+      text = head.toString('utf-8') + '\n' + tail.toString('utf-8')
+    }
+    const hay = caseSensitive ? text : text.toLowerCase()
+    const needle = caseSensitive ? query : query.toLowerCase()
+    let idx = hay.indexOf(needle)
+    if (idx < 0) return null
+    let count = 0, from = idx
+    while (from >= 0) { count++; from = hay.indexOf(needle, from + needle.length) }
+    // 片段：原文匹配处 ±60 字符，去掉 JSON 转义噪声
+    const start = Math.max(0, idx - 60)
+    let snippet = text.slice(start, idx + needle.length + 60)
+    snippet = snippet.replace(/\\n|\\t|\\r/g, ' ').replace(/\\"/g, '"').replace(/[{}\[\]"]/g, ' ').replace(/\s+/g, ' ').trim()
+    return { count, snippet }
+  } catch (e) { return null }
+}
+
+module.exports = { fs, path, os, isSystemText, parseJsonl, spawnDetached, launchInTerminal, readSessionFileSmart, LARGE_FILE_THRESHOLD, grepSessionFile }

@@ -37,6 +37,38 @@ const terminalApp = ref(window.utools.dbStorage.getItem('terminalApp') || 'auto'
 const isStandaloneWindow = ref(false)
 const sessionBroadcast = new BroadcastChannel('cc-session')
 
+// 全局全文搜索
+const globalSearch = ref({ active: false, query: '', results: [], loading: false })
+let globalSearchSeq = 0
+function runGlobalSearch(query) {
+  const q = (query || '').trim()
+  globalSearch.value.query = query
+  if (!q) { globalSearch.value.results = []; globalSearch.value.loading = false; return }
+  const seq = ++globalSearchSeq
+  globalSearch.value.loading = true
+  setTimeout(() => {
+    let results = []
+    try { results = window.services.searchSessions(q, { limit: 100 }) || [] } catch (e) { console.error(e) }
+    if (seq !== globalSearchSeq) return // 有更新的搜索，丢弃旧结果
+    globalSearch.value.results = results
+    globalSearch.value.loading = false
+  }, 0)
+}
+function setGlobalSearchActive(active) {
+  globalSearch.value.active = active
+  if (!active) { globalSearch.value.query = ''; globalSearch.value.results = [] }
+}
+// 点击搜索结果：打开会话并触发会话内高亮
+function openSearchResult(result) {
+  const session = {
+    provider: result.provider, path: result.sessionPath, sessionId: result.sessionId,
+    name: result.name, cwd: result.cwd, isFavorite: false, subagents: []
+  }
+  pendingInSearch.value = globalSearch.value.query
+  selectSession(applyOverride(session))
+}
+const pendingInSearch = ref('')
+
 // Computed
 const displayMessages = useDisplayMessages(sessionContent)
 
@@ -559,7 +591,11 @@ onMounted(() => {
       :search-query="searchQuery"
       :collapsed="sidebarCollapsed"
       :projects-loaded="projectsLoaded"
+      :global-search="globalSearch"
       @update:search-query="searchQuery = $event"
+      @global-search="runGlobalSearch"
+      @global-search-active="setGlobalSearchActive"
+      @open-search-result="openSearchResult"
       @toggle-project="toggleProject"
       @toggle-all="toggleAllProjects"
       @select-session="selectSession"
@@ -602,6 +638,7 @@ onMounted(() => {
         :loading="loading"
         :agent-tool-use-map="agentToolUseMap"
         :standalone="isStandaloneWindow"
+        :pending-search="pendingInSearch"
         @fork="startFork"
         @fork-summary="startSummaryFork"
         @resume="resumeSession"

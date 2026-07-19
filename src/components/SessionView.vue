@@ -17,7 +17,8 @@ const props = defineProps({
   displayMessages: Array,
   loading: Boolean,
   agentToolUseMap: { type: Object, default: () => ({}) },
-  standalone: { type: Boolean, default: false }
+  standalone: { type: Boolean, default: false },
+  pendingSearch: { type: String, default: '' }
 })
 
 const emit = defineEmits(['fork', 'fork-summary', 'resume', 'preview-image', 'rename', 'delete', 'toggle-favorite', 'select-session', 'open-session-window'])
@@ -55,6 +56,18 @@ const searchInputRef = ref(null)
 watch(searchVisible, (v) => {
   if (v) nextTick(() => searchInputRef.value?.focus())
 })
+
+// 从全局搜索结果打开会话：内容渲染后自动打开会话内搜索并高亮
+let pendingSearchDone = false
+watch(() => props.session?.path, () => { pendingSearchDone = false })
+watch(() => props.displayMessages, () => {
+  if (props.pendingSearch && !pendingSearchDone && props.displayMessages?.length) {
+    pendingSearchDone = true
+    searchText.value = props.pendingSearch
+    openSearch()
+    nextTick(() => nextTick(() => doSearch()))
+  }
+}, { flush: 'post' })
 
 // Global keyboard shortcuts
 function onKeyDown(e) {
