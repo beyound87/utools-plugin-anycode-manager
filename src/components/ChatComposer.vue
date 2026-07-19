@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { IconClose } from './icons'
 
 const props = defineProps({
@@ -16,6 +16,7 @@ const emit = defineEmits(['send', 'toggle-chat', 'update:permMode', 'stop-chat',
 const text = ref('')
 const images = ref([])
 const attachments = ref([])
+const modelOpen = ref(false)
 const textareaRef = ref(null)
 const showToolbar = ref(true)
 
@@ -98,6 +99,9 @@ function changeCwd() {
 }
 
 const canSend = computed(() => !props.sending && (text.value.trim() || images.value.length > 0))
+function closeDropdowns(e) { if (!e.target.closest('.model-wrapper')) modelOpen.value = false }
+onMounted(() => document.addEventListener('click', closeDropdowns))
+onUnmounted(() => document.removeEventListener('click', closeDropdowns))
 const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.permMode)?.icon || '🔒')
 </script>
 
@@ -125,10 +129,15 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
       <span class="toolbar-sep"></span>
 
       <!-- 模型 -->
-      <div class="model-wrapper">
-        <input class="model-input" :value="model" @change="emit('update:model', $event.target.value)"
-          placeholder="默认模型" title="模型名" list="chat-models" />
-        <datalist id="chat-models"><option v-for="m in modelList" :key="m" :value="m" /></datalist>
+      <div class="model-wrapper" :class="{ open: modelOpen }">
+        <button class="model-trigger" @click="modelOpen = !modelOpen" :title="model || '默认模型'">
+          {{ model || '默认模型' }}
+          <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+        </button>
+        <div v-if="modelOpen" class="model-dropdown">
+          <div v-for="m in modelList" :key="m" class="model-option" :class="{ active: m === model }" @click="emit('update:model', m); modelOpen = false">{{ m }}</div>
+          <input class="model-custom" placeholder="自定义模型名..." @keydown.enter="emit('update:model', $event.target.value); $event.target.value=''; modelOpen = false" @click.stop />
+        </div>
       </div>
 
       <!-- Effort（仅支持的平台） -->
@@ -185,7 +194,7 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
         @keydown="onKeyDown"
         @paste="onPaste"
         placeholder="输入消息..."
-        rows="1"
+        rows="3"
         :disabled="sending"
       ></textarea>
       <button class="send-btn" :class="{ loading: sending }" :disabled="!canSend" @click="send">
@@ -253,16 +262,40 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
 .mode-pill.danger { background: #fce8e6; color: #c5221f; }
 :global(.dark) .mode-pill.danger { background: #3c2020; color: #f28b82; }
 
-/* 模型选择 */
-.model-wrapper { flex-shrink: 0; }
-.model-input {
-  width: 140px; padding: 5px 10px; border: 1px solid #d5d8dc; border-radius: 8px;
-  font-size: 12px; background: #fff; color: inherit; outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+/* 模型选择下拉 */
+.model-wrapper { position: relative; flex-shrink: 0; }
+.model-trigger {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 10px; border: 1px solid #d5d8dc; border-radius: 8px;
+  font-size: 12px; background: #fff; color: inherit; cursor: pointer;
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: border-color 0.15s;
 }
-.model-input:focus { border-color: #1a73e8; box-shadow: 0 0 0 2px rgba(26,115,232,0.15); }
-:global(.dark) .model-input { background: #2a2d32; border-color: #3a3d42; }
-:global(.dark) .model-input:focus { border-color: #8ab4f8; box-shadow: 0 0 0 2px rgba(138,180,248,0.2); }
+.model-wrapper.open .model-trigger { border-color: #1a73e8; }
+:global(.dark) .model-trigger { background: #2a2d32; border-color: #3a3d42; }
+:global(.dark) .model-wrapper.open .model-trigger { border-color: #8ab4f8; }
+.model-dropdown {
+  position: absolute; left: 0; bottom: 100%; margin-bottom: 4px;
+  background: #fff; border: 1px solid #d5d8dc; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12); min-width: 200px; max-height: 240px;
+  overflow-y: auto; z-index: 100; padding: 4px;
+}
+:global(.dark) .model-dropdown { background: #2a2d32; border-color: #3a3d42; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+.model-option {
+  padding: 7px 12px; border-radius: 6px; font-size: 12px; cursor: pointer;
+  transition: background 0.1s; white-space: nowrap;
+}
+.model-option:hover { background: rgba(26,115,232,0.08); }
+.model-option.active { background: rgba(26,115,232,0.12); color: #1a73e8; font-weight: 600; }
+:global(.dark) .model-option:hover { background: rgba(138,180,248,0.1); }
+:global(.dark) .model-option.active { background: rgba(138,180,248,0.15); color: #8ab4f8; }
+.model-custom {
+  display: block; width: 100%; box-sizing: border-box; margin-top: 4px;
+  padding: 6px 10px; border: 1px solid #e4e7eb; border-radius: 6px;
+  font-size: 11px; background: transparent; color: inherit; outline: none;
+}
+.model-custom::placeholder { color: #9aa0a6; }
+:global(.dark) .model-custom { border-color: #3a3d42; }
 
 /* cwd */
 .cwd-chip {
