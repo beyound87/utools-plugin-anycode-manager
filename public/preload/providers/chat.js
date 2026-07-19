@@ -83,8 +83,9 @@ function sendOneShotMessage(msg, opts) {
 
   // 图片：保存到临时文件，通过 -i/-f/@path 传
   const tmpImages = []
+  let imgIdx = 0
   for (const img of (msg.images || [])) {
-    const tmp = path.join(os.tmpdir(), 'anycode-img-' + Date.now() + '.' + (img.mediaType || 'image/png').split('/')[1])
+    const tmp = path.join(os.tmpdir(), 'anycode-img-' + Date.now() + '-' + (imgIdx++) + '.' + (img.mediaType || 'image/png').split('/')[1])
     try { fs.writeFileSync(tmp, Buffer.from(img.data, 'base64')); tmpImages.push(tmp) } catch (e) {}
   }
 
@@ -93,18 +94,20 @@ function sendOneShotMessage(msg, opts) {
     for (const f of tmpImages) args.push('-i', f)
     if (opts.sessionId) args.unshift('resume', opts.sessionId, '--')
     if (opts.model) args.push('-m', opts.model)
+    if (opts.effort) args.push('-c', 'model_reasoning_effort="' + opts.effort + '"')
     if (opts.sandbox) args.push('-s', opts.sandbox)
   } else if (p === 'gemini') {
     args = ['-p', prompt]
     if (opts.approvalMode) args.push('--approval-mode', opts.approvalMode)
-    // 图片和附件通过 @ 引用
-    for (const f of tmpImages) prompt = '@' + f + ' ' + prompt
+    // 图片和附件通过 @ 引用（引号防空格路径截断）
+    for (const f of tmpImages) prompt = '@"' + f + '" ' + prompt
     args[1] = prompt
   } else if (p === 'opencode') {
     args = ['run', prompt]
     if (opts.sessionId) args.push('-s', opts.sessionId)
     for (const f of tmpImages) args.push('-f', f)
     if (opts.model) args.push('-m', opts.model)
+    if (opts.effort) args.push('--variant', opts.effort)
     args.push('--format', 'json')
   }
 
@@ -114,11 +117,12 @@ function sendOneShotMessage(msg, opts) {
     return { success: false, error: e.message }
   }
 
+  const myProc = currentProc
   let stdout = '', stderr = ''
   currentProc.stdout.on('data', d => { stdout += d.toString('utf-8') })
   currentProc.stderr.on('data', d => { stderr += d.toString('utf-8') })
   currentProc.on('exit', (code) => {
-    currentProc = null
+    if (currentProc === myProc) currentProc = null
     cleanTmpImages(tmpImages)
     // 解析输出
     const text = stdout.trim()
@@ -178,9 +182,12 @@ function sendChatMessage(msg, opts) {
 }
 
 // stdout NDJSON 管道（Claude 持久进程用）
+// #1 fix: 闭包捕获 proc 引用做身份校验，避免旧进程事件打入新进程回调
 function pipeNdjson(proc) {
+  const myProc = proc
   let buf = ''
   proc.stdout.on('data', (d) => {
+    if (currentProc !== myProc) return
     buf += d.toString('utf-8')
     let nl
     while ((nl = buf.indexOf('\n')) >= 0) {
@@ -190,13 +197,16 @@ function pipeNdjson(proc) {
     }
   })
   proc.stderr.on('data', (d) => {
+    if (currentProc !== myProc) return
     try { onEventCb && onEventCb({ type: '_stderr', text: d.toString('utf-8') }) } catch (e) {}
   })
   proc.on('exit', (code) => {
+    if (currentProc !== myProc) return
     try { onEventCb && onEventCb({ type: '_exit', code }) } catch (e) {}
     currentProc = null
   })
   proc.on('error', (err) => {
+    if (currentProc !== myProc) return
     try { onEventCb && onEventCb({ type: '_error', error: err.message }) } catch (e) {}
   })
 }

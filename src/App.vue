@@ -36,6 +36,16 @@ const chatModel = ref('')
 const chatEffort = ref('')
 let chatLiveItem = null                // 流式中的 live assistant item
 let chatWatchSuspended = false
+// #10: 流式 delta 节流——聚合 token 后 100ms 一次性刷 Vue 响应式 + 滚动
+let deltaFlushTimer = null
+function scheduleDeltaFlush() {
+  if (deltaFlushTimer) return
+  deltaFlushTimer = setTimeout(() => {
+    deltaFlushTimer = null
+    sessionContent.value = [...sessionContent.value]
+    nextTick(() => sessionViewRef.value?.scrollToEnd())
+  }, 100)
+}
 const selectedMemory = ref(null)
 const memoryFiles = ref([])
 const memoryLoading = ref(false)
@@ -512,9 +522,13 @@ function sendChat(msg) {
   nextTick(() => sessionViewRef.value?.scrollToEnd())
   chatSending.value = true
   const s = selectedSession.value
-  const result = window.services.sendChatMessage({ text: msg.text, images: msg.images }, {
+  // 附件路径注入文本（#3 fix: 传给 CLI 而非仅 UI 展示）
+  let chatText = msg.text || ''
+  if (msg.attachments?.length) chatText = msg.attachments.map(a => '@"' + a + '"').join(' ') + '\n' + chatText
+  const result = window.services.sendChatMessage({ text: chatText, images: msg.images }, {
     provider: s?.provider, sessionId: s?.sessionId, cwd: s?.cwd || '',
-    command: terminalCommand.value || undefined, model: undefined,
+    command: terminalCommand.value || undefined, model: chatModel.value || undefined,
+    effort: chatEffort.value || undefined,
     sandbox: chatPermMode.value === 'bypassPermissions' ? 'full' : undefined,
     approvalMode: chatPermMode.value === 'plan' ? 'plan' : chatPermMode.value === 'bypassPermissions' ? 'yolo' : 'default'
   })
@@ -561,16 +575,14 @@ function onChatEvent(ev) {
         const last = blocks[blocks.length - 1]
         if (last?.type === 'text') last.text += delta.text
         else blocks.push({ type: 'text', text: delta.text })
-        // 触发 Vue 响应式
-        sessionContent.value = [...sessionContent.value]
       } else if (delta?.type === 'thinking_delta' && delta.thinking) {
         const blocks = chatLiveItem.message.content
         const last = blocks[blocks.length - 1]
         if (last?.type === 'thinking') last.thinking += delta.thinking
         else blocks.push({ type: 'thinking', thinking: delta.thinking })
-        sessionContent.value = [...sessionContent.value]
       }
-      nextTick(() => sessionViewRef.value?.scrollToEnd())
+      // #10 fix: 节流 Vue 响应式刷新 + 滚动，避免每 token 全量数组展开 + layout
+      scheduleDeltaFlush()
     } else if (se.type === 'content_block_start' && se.content_block?.type === 'tool_use') {
       // 工具调用开始
       if (!chatLiveItem) {
@@ -624,7 +636,7 @@ function startNewChat() {
   window.services.unwatchSessionFile()
   const result = window.services.newChatSession({
     provider: p, cwd, command: terminalCommand.value || undefined,
-    permissionMode: chatPermMode.value
+    permissionMode: chatPermMode.value, model: chatModel.value || undefined
   }, onChatEvent)
   if (!result.success) { showSnackbar('新建会话失败: ' + result.error, 'error'); stopChatSession() }
 }
@@ -916,8 +928,7 @@ onMounted(() => {
   }
   window.utools.onPluginOut(() => {
     window.services.unwatchSessionFile()
-    window.services.stopChat()
-    chatActive.value = false
+    if (chatActive.value) stopChatSession()
     stopAutoRefresh()
   })
   document.addEventListener('keydown', onGlobalKey)
