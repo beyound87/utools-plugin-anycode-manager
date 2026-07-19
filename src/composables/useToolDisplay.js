@@ -88,12 +88,18 @@ export function getDiff(block) {
 export function useCollapse() {
   const collapsedBlocks = ref({})
   const forceExpand = ref(false)
+  const allMode = ref(null) // null=按默认 | 'expand'=全展开 | 'collapse'=全折叠；collapsedBlocks 为逐项例外
   function toggleCollapse(key) {
-    collapsedBlocks.value[key] = !(collapsedBlocks.value[key] ?? true)
+    collapsedBlocks.value = { ...collapsedBlocks.value, [key]: !isCollapsed(key) }
   }
   function isCollapsed(key) {
     if (forceExpand.value) return false
-    return collapsedBlocks.value[key] ?? true
+    if (key in collapsedBlocks.value) return collapsedBlocks.value[key]
+    if (allMode.value === 'expand') return false
+    if (allMode.value === 'collapse') return true
+    return true
   }
-  return { collapsedBlocks, toggleCollapse, isCollapsed, forceExpand }
+  function expandAll() { allMode.value = 'expand'; collapsedBlocks.value = {} }
+  function collapseAll() { allMode.value = 'collapse'; collapsedBlocks.value = {} }
+  return { collapsedBlocks, toggleCollapse, isCollapsed, forceExpand, expandAll, collapseAll, allMode }
 }

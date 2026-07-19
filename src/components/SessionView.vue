@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue'
-import { IconTerminal, IconCopy, IconFork, IconStop, IconChevronUp, IconChevronDown, IconChat, IconSearch, IconClose, IconExport, IconImage, IconFolder, IconMore, IconStar, IconStarOutline, IconEdit, IconDelete, IconList, IconOpenExternal, IconRestore } from './icons'
+import { IconTerminal, IconCopy, IconFork, IconStop, IconChevronUp, IconChevronDown, IconChat, IconSearch, IconClose, IconExport, IconImage, IconFolder, IconMore, IconStar, IconStarOutline, IconEdit, IconDelete, IconList, IconOpenExternal, IconRestore, IconExpandAll, IconCollapseAll } from './icons'
 import { formatTime, formatTokens, formatDuration } from '../composables/useFormat'
 import { parseContentBlocks, mergeToolBlocks, getMessageRole, getRoleLabel, hasXmlTags, parseTextSegments } from '../composables/useMessageParser'
 import { formatToolInput, getToolSummary, getDiff } from '../composables/useToolDisplay'
@@ -47,7 +47,7 @@ function buildResumeCommand(s) {
 }
 
 const resumeCommandText = computed(() => buildResumeCommand(props.session))
-const { toggleCollapse, isCollapsed, forceExpand } = useCollapse()
+const { toggleCollapse, isCollapsed, forceExpand, expandAll, collapseAll, allMode } = useCollapse()
 const { isDark } = useTheme()
 const { searchVisible, searchText, matchIndex, matchCount, caseSensitive, wholeWord, useRegex, openSearch, closeSearch, doSearch, nextMatch, prevMatch } = useSearch()
 const searchInputRef = ref(null)
@@ -558,6 +558,10 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
           <IconCopy :size="13" />
         </button>
         <div style="flex:1"></div>
+        <button class="header-action-btn" @click="allMode === 'expand' ? collapseAll() : expandAll()" :title="allMode === 'expand' ? '折叠全部工具调用' : '展开全部工具调用'">
+          <IconExpandAll v-if="allMode !== 'expand'" :size="14" />
+          <IconCollapseAll v-else :size="14" />
+        </button>
         <button v-if="!standalone" class="header-action-btn" @click="emit('open-session-window', session)" title="新窗口打开">
           <IconOpenExternal :size="14" />
         </button>

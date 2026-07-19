@@ -103,7 +103,21 @@ watch(filterOnlyMemory, (val) => {
   emit('filter-memory-change', val)
 })
 
-defineExpose({ clearMultiSelect, expandSubagents, filterOnlyMemory })
+// 当前可见会话的扁平列表（供键盘上下键导航）
+function flatVisibleSessions() {
+  const out = []
+  const searching = !!(props.searchQuery && props.searchQuery.trim())
+  for (const project of filteredProjects.value) {
+    if (!expandedProjects.value[project.name] && !searching) continue
+    for (const s of (project.sessions || [])) {
+      out.push(s)
+      if (s.subagents?.length && expandedSubagents.value.has(s.path)) out.push(...s.subagents)
+    }
+  }
+  return out
+}
+
+defineExpose({ clearMultiSelect, expandSubagents, filterOnlyMemory, flatVisibleSessions })
 
 // Subagent expand/collapse
 const expandedSubagents = ref(new Set())

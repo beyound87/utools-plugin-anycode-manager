@@ -32,6 +32,22 @@ const memoryFiles = ref([])
 const memoryLoading = ref(false)
 const searchQuery = ref('')
 const sidebarCollapsed = ref(false)
+const sidebarWidth = ref(Number(window.utools.dbStorage.getItem('anycode:sidebarWidth')) || 320)
+function startResize(e) {
+  e.preventDefault()
+  const startX = e.clientX
+  const startW = sidebarWidth.value
+  const onMove = (ev) => { sidebarWidth.value = Math.max(240, Math.min(560, startW + ev.clientX - startX)) }
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.body.style.userSelect = ''
+    try { window.utools.dbStorage.setItem('anycode:sidebarWidth', sidebarWidth.value) } catch (e) {}
+  }
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+}
 const showSettings = ref(false)
 const showStats = ref(false)
 const terminalCommand = ref(window.utools.dbStorage.getItem('terminalCommand') || '')
@@ -122,6 +138,34 @@ function stopAutoRefresh() {
   if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null }
 }
 
+// 键盘：上下键切换会话，Ctrl+K 快速全文搜索
+function onGlobalKey(e) {
+  if (isStandaloneWindow.value) return
+  const t = e.target
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault()
+    setGlobalSearchActive(true)
+    nextTick(() => { document.querySelector('.search-box .search-input')?.focus() })
+    return
+  }
+  if (typing) return
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const flat = sidebarRef.value?.flatVisibleSessions?.() || []
+    if (!flat.length) return
+    e.preventDefault()
+    const curPath = selectedSession.value?.path
+    let idx = flat.findIndex(s => s.path === curPath)
+    if (idx < 0) idx = e.key === 'ArrowDown' ? -1 : flat.length
+    let next = e.key === 'ArrowDown' ? idx + 1 : idx - 1
+    next = Math.max(0, Math.min(flat.length - 1, next))
+    if (flat[next]) {
+      selectSession(flat[next])
+      nextTick(() => document.querySelector('.session-item.selected, .subagent-item.selected')?.scrollIntoView({ block: 'nearest' }))
+    }
+  }
+}
+
 // Dialog state
 const renameDialog = ref({ show: false, session: null })
 const deleteConfirm = ref({ show: false, session: null, showHint: true })
@@ -134,12 +178,32 @@ const imagePreview = ref({ show: false, src: '', mediaType: '' })
 // Project/session operations
 function autoSelectLatestSession() {
   if (selectedSession.value) return
-  // 找最近修改的项目，加载其会话，选中最新的一条
+  // 优先恢复上次打开的会话（其项目仍存在时）
+  let last = null
+  try { last = window.utools.dbStorage.getItem('anycode:lastSession') } catch (e) {}
+  if (last && last.path) {
+    const proj = projects.value.find(p => p.provider === (last.provider || 'claude') && (p.cwd === last.cwd || last.path.startsWith(p.path)))
+    if (proj) {
+      expandedProjects.value[proj.name] = true
+      loadProjectSessionsFor(proj.name)
+      setTimeout(() => {
+        const p = projects.value.find(x => x.name === proj.name)
+        const s = p?.sessions?.find(s => s.path === last.path)
+        if (s) { selectSession(s); return }
+        selectNewestSession()
+      }, 50)
+      return
+    }
+  }
+  selectNewestSession()
+}
+
+function selectNewestSession() {
+  if (selectedSession.value) return
   const latest = projects.value[0]
   if (!latest) return
   expandedProjects.value[latest.name] = true
   loadProjectSessionsFor(latest.name)
-  // loadProjectSessionsFor 是异步的（setTimeout 0），等它完成后选中
   setTimeout(() => {
     const proj = projects.value.find(p => p.name === latest.name)
     if (proj?.sessions?.length > 0) {
@@ -311,6 +375,10 @@ function selectSession(session) {
   selectedMemory.value = null
   memoryFiles.value = []
   selectedSession.value = session
+  // 记住上次打开的会话
+  if (!session.isSubagent && !isStandaloneWindow.value) {
+    try { window.utools.dbStorage.setItem('anycode:lastSession', { provider: session.provider, path: session.path, sessionId: session.sessionId, name: session.name, cwd: session.cwd }) } catch (e) {}
+  }
   if (session.isSubagent) {
     sidebarRef.value?.expandSubagents(session.parentSessionPath)
   }
@@ -590,6 +658,7 @@ onMounted(() => {
     window.services.unwatchSessionFile()
     stopAutoRefresh()
   })
+  document.addEventListener('keydown', onGlobalKey)
   sessionBroadcast.onmessage = ({ data }) => {
     if (data.action === 'delete') {
       if (selectedSession.value?.path === data.path ||
@@ -610,6 +679,7 @@ onMounted(() => {
     <Sidebar
       v-if="!isStandaloneWindow"
       ref="sidebarRef"
+      :style="{ width: sidebarWidth + 'px', minWidth: sidebarWidth + 'px', marginLeft: sidebarCollapsed ? (-sidebarWidth + 'px') : '0' }"
       :projects="projects"
       :expanded-projects="expandedProjects"
       :selected-session="selectedSession"
@@ -640,6 +710,9 @@ onMounted(() => {
       @resume-session="resumeSession"
       @filter-memory-change="onFilterMemoryChange"
     />
+
+    <!-- 侧边栏拖拽调宽手柄 -->
+    <div v-if="!isStandaloneWindow && !sidebarCollapsed" class="sidebar-resizer" @mousedown="startResize"></div>
 
     <!-- 侧边栏收起/展开按钮 -->
     <button v-if="!isStandaloneWindow" class="sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed" :title="sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'">
@@ -770,7 +843,7 @@ onMounted(() => {
 
 .sidebar-toggle {
   position: absolute;
-  left: v-bind("sidebarCollapsed ? '0px' : '320px'");
+  left: v-bind("sidebarCollapsed ? '0px' : sidebarWidth + 'px'");
   top: 50%;
   transform: translateY(-50%);
   z-index: 21;
@@ -797,6 +870,20 @@ onMounted(() => {
 }
 .dark .sidebar-toggle:hover {
   background: rgba(255,255,255,0.12);
+}
+/* 侧边栏拖拽调宽手柄 */
+.sidebar-resizer {
+  position: absolute;
+  left: v-bind("sidebarWidth + 'px'");
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  margin-left: -2px;
+  z-index: 22;
+  cursor: col-resize;
+}
+.sidebar-resizer:hover {
+  background: rgba(25,118,210,0.3);
 }
 
 .content {
