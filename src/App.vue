@@ -131,6 +131,10 @@ function buildMainPushItems(searchWord) {
 
 // Computed
 const displayMessages = useDisplayMessages(sessionContent)
+const sessionSupportsChat = computed(() => {
+  const p = selectedSession.value?.provider
+  return p ? window.services.getProvider(p)?.supportsChat : false
+})
 
 // 当前会话中 toolUseId → subagent session 的映射，用于在工具调用卡片上显示"查看"链接
 const agentToolUseMap = computed(() => {
@@ -505,7 +509,13 @@ function sendChat(msg) {
   sessionContent.value = [...sessionContent.value, userItem]
   nextTick(() => sessionViewRef.value?.scrollToEnd())
   chatSending.value = true
-  const result = window.services.sendChatMessage({ text: msg.text, images: msg.images })
+  const s = selectedSession.value
+  const result = window.services.sendChatMessage({ text: msg.text, images: msg.images }, {
+    provider: s?.provider, sessionId: s?.sessionId, cwd: s?.cwd || '',
+    command: terminalCommand.value || undefined, model: undefined,
+    sandbox: chatPermMode.value === 'bypassPermissions' ? 'full' : undefined,
+    approvalMode: chatPermMode.value === 'plan' ? 'plan' : chatPermMode.value === 'bypassPermissions' ? 'yolo' : 'default'
+  })
   if (!result.success) { showSnackbar('发送失败: ' + result.error, 'error'); chatSending.value = false }
 }
 
@@ -974,7 +984,7 @@ onMounted(() => {
         @open-session-window="openSessionWindow"
       />
       <ChatComposer
-        v-if="selectedSession && !selectedSession.isSubagent && selectedSession.provider === 'claude'"
+        v-if="selectedSession && !selectedSession.isSubagent && sessionSupportsChat"
         :active="chatActive"
         :sending="chatSending"
         :perm-mode="chatPermMode"

@@ -1,9 +1,9 @@
-// 对话引擎：驱动 CLI 非交互模式，流式回调事件给渲染层
-// Phase 1: Claude 续接对话（持久进程 stream-json）。其他 provider 后续接入。
-const { fs, os } = require('./common')
+// 对话引擎：驱动各 CLI 非交互模式，流式回调事件给渲染层
+// Claude: 持久进程 stream-json（多轮 stdin/stdout）
+// Codex/Gemini/OpenCode: 每条消息一个进程（spawn → 收完整输出 → 回调）
+const { fs, os, path } = require('./common')
 const { spawn } = require('node:child_process')
 
-// 模块级单例：同一时刻只维护一个对话进程
 let currentProc = null
 let currentProvider = null
 let onEventCb = null
@@ -20,9 +20,16 @@ function stopChat() {
   currentProvider = null
 }
 
-// 启动 Claude 持久对话进程（stream-json 双向）
-// opts: { sessionId, cwd, command, permissionMode, model }
-// onEvent(ev): 逐条回调 stdout 的 NDJSON 事件（已 JSON.parse），外加 { type:'_stderr'|'_exit' }
+const isWin = process.platform === 'win32'
+function resolveWorkDir(cwd) { return cwd && fs.existsSync(cwd) ? cwd : os.homedir() }
+function spawnBin(bin, args, cwd) {
+  return spawn(isWin ? bin + '.cmd' : bin, args, {
+    cwd, stdio: ['pipe', 'pipe', 'pipe'], shell: isWin, windowsHide: true
+  })
+}
+
+// ============ Claude（持久进程 stream-json）============
+
 function startClaudeChat(opts, onEvent) {
   stopChat()
   onEventCb = onEvent
@@ -30,49 +37,19 @@ function startClaudeChat(opts, onEvent) {
   const bin = opts.command || 'claude'
   const args = ['-p', '--output-format', 'stream-json', '--input-format', 'stream-json', '--verbose', '--include-partial-messages']
   if (opts.sessionId) args.push('--resume', opts.sessionId)
-  args.push('--permission-mode', opts.permissionMode || 'plan') // 默认 plan 只读，安全
+  args.push('--permission-mode', opts.permissionMode || 'plan')
   if (opts.model) args.push('--model', opts.model)
-
-  const isWin = process.platform === 'win32'
-  const workDir = opts.cwd && fs.existsSync(opts.cwd) ? opts.cwd : os.homedir()
-  try {
-    currentProc = spawn(isWin ? bin + '.cmd' : bin, args, {
-      cwd: workDir, stdio: ['pipe', 'pipe', 'pipe'], shell: isWin, windowsHide: true
-    })
-  } catch (e) {
+  const workDir = resolveWorkDir(opts.cwd)
+  try { currentProc = spawnBin(bin, args, workDir) } catch (e) {
     onEventCb && onEventCb({ type: '_error', error: e.message })
     currentProc = null
     return { success: false, error: e.message }
   }
-
-  let buf = ''
-  currentProc.stdout.on('data', (d) => {
-    buf += d.toString('utf-8')
-    let nl
-    while ((nl = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, nl); buf = buf.slice(nl + 1)
-      if (!line.trim()) continue
-      let ev
-      try { ev = JSON.parse(line) } catch (e) { continue }
-      try { onEventCb && onEventCb(ev) } catch (e) {}
-    }
-  })
-  currentProc.stderr.on('data', (d) => {
-    try { onEventCb && onEventCb({ type: '_stderr', text: d.toString('utf-8') }) } catch (e) {}
-  })
-  currentProc.on('exit', (code) => {
-    try { onEventCb && onEventCb({ type: '_exit', code }) } catch (e) {}
-    currentProc = null
-  })
-  currentProc.on('error', (err) => {
-    try { onEventCb && onEventCb({ type: '_error', error: err.message }) } catch (e) {}
-  })
+  pipeNdjson(currentProc)
   return { success: true }
 }
 
-// 发送一条用户消息（文本 + 图片）到持久进程
-// msg: { text, images:[{ mediaType, data(base64) }] }
-function sendChatMessage(msg) {
+function sendClaudeMessage(msg) {
   if (!currentProc) return { success: false, error: '对话进程未启动' }
   const content = []
   if (msg.text) content.push({ type: 'text', text: msg.text })
@@ -80,13 +57,148 @@ function sendChatMessage(msg) {
     content.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType || 'image/png', data: img.data } })
   }
   if (content.length === 0) return { success: false, error: '空消息' }
-  const payload = { type: 'user', message: { role: 'user', content } }
   try {
-    currentProc.stdin.write(JSON.stringify(payload) + '\n')
+    currentProc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n')
     return { success: true }
-  } catch (e) {
+  } catch (e) { return { success: false, error: e.message } }
+}
+
+// ============ 通用一次一进程模式（Codex/Gemini/OpenCode）============
+
+function startOneShot(opts, onEvent) {
+  stopChat()
+  onEventCb = onEvent
+  currentProvider = opts.provider
+  // 一次一进程不需要 startChat 创建进程，sendChatMessage 时才起
+  return { success: true }
+}
+
+function sendOneShotMessage(msg, opts) {
+  if (currentProc) { try { currentProc.kill() } catch (e) {} }
+  const p = opts.provider
+  const bin = opts.command || p
+  const workDir = resolveWorkDir(opts.cwd)
+  let args = []
+  let prompt = msg.text || ''
+
+  // 图片：保存到临时文件，通过 -i/-f/@path 传
+  const tmpImages = []
+  for (const img of (msg.images || [])) {
+    const tmp = path.join(os.tmpdir(), 'anycode-img-' + Date.now() + '.' + (img.mediaType || 'image/png').split('/')[1])
+    try { fs.writeFileSync(tmp, Buffer.from(img.data, 'base64')); tmpImages.push(tmp) } catch (e) {}
+  }
+
+  if (p === 'codex') {
+    args = ['exec', prompt]
+    for (const f of tmpImages) args.push('-i', f)
+    if (opts.sessionId) args.unshift('resume', opts.sessionId, '--')
+    if (opts.model) args.push('-m', opts.model)
+    if (opts.sandbox) args.push('-s', opts.sandbox)
+  } else if (p === 'gemini') {
+    args = ['-p', prompt]
+    if (opts.approvalMode) args.push('--approval-mode', opts.approvalMode)
+    // 图片和附件通过 @ 引用
+    for (const f of tmpImages) prompt = '@' + f + ' ' + prompt
+    args[1] = prompt
+  } else if (p === 'opencode') {
+    args = ['run', prompt]
+    if (opts.sessionId) args.push('-s', opts.sessionId)
+    for (const f of tmpImages) args.push('-f', f)
+    if (opts.model) args.push('-m', opts.model)
+    args.push('--format', 'json')
+  }
+
+  try { currentProc = spawnBin(bin, args, workDir) } catch (e) {
+    onEventCb && onEventCb({ type: '_error', error: e.message })
+    cleanTmpImages(tmpImages)
     return { success: false, error: e.message }
+  }
+
+  let stdout = '', stderr = ''
+  currentProc.stdout.on('data', d => { stdout += d.toString('utf-8') })
+  currentProc.stderr.on('data', d => { stderr += d.toString('utf-8') })
+  currentProc.on('exit', (code) => {
+    currentProc = null
+    cleanTmpImages(tmpImages)
+    // 解析输出
+    const text = stdout.trim()
+    if (text) {
+      // 尝试 JSON 事件（OpenCode --format json）
+      if (p === 'opencode') {
+        parseOpenCodeJson(text, onEventCb)
+      } else {
+        // Codex/Gemini 纯文本 → 包装为 assistant 消息
+        onEventCb && onEventCb({
+          type: 'assistant',
+          message: { role: 'assistant', content: [{ type: 'text', text }], model: opts.model || '' },
+          uuid: 'chat-a-' + Date.now()
+        })
+      }
+    }
+    onEventCb && onEventCb({
+      type: 'result', subtype: code === 0 ? 'success' : 'error_during_execution',
+      is_error: code !== 0, result: text || stderr
+    })
+  })
+  currentProc.on('error', err => {
+    cleanTmpImages(tmpImages)
+    onEventCb && onEventCb({ type: '_error', error: err.message })
+  })
+  return { success: true }
+}
+
+function parseOpenCodeJson(text, cb) {
+  // OpenCode --format json 输出多行 JSON 事件
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue
+    try {
+      const ev = JSON.parse(line)
+      // 归一化 OpenCode 事件为 assistant 消息
+      if (ev.role === 'assistant' || ev.type === 'message') {
+        cb && cb({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: ev.text || ev.content || JSON.stringify(ev) }] }, uuid: 'oc-' + Date.now() })
+      }
+    } catch (e) {}
   }
 }
 
-module.exports = { startClaudeChat, sendChatMessage, stopChat, isRunning }
+function cleanTmpImages(files) {
+  for (const f of files) { try { fs.unlinkSync(f) } catch (e) {} }
+}
+
+// ============ 统一 API ============
+
+function startChat(opts, onEvent) {
+  if (opts.provider === 'claude' || !opts.provider) return startClaudeChat(opts, onEvent)
+  return startOneShot(opts, onEvent)
+}
+
+function sendChatMessage(msg, opts) {
+  if (currentProvider === 'claude') return sendClaudeMessage(msg)
+  return sendOneShotMessage(msg, opts || {})
+}
+
+// stdout NDJSON 管道（Claude 持久进程用）
+function pipeNdjson(proc) {
+  let buf = ''
+  proc.stdout.on('data', (d) => {
+    buf += d.toString('utf-8')
+    let nl
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl); buf = buf.slice(nl + 1)
+      if (!line.trim()) continue
+      try { onEventCb && onEventCb(JSON.parse(line)) } catch (e) {}
+    }
+  })
+  proc.stderr.on('data', (d) => {
+    try { onEventCb && onEventCb({ type: '_stderr', text: d.toString('utf-8') }) } catch (e) {}
+  })
+  proc.on('exit', (code) => {
+    try { onEventCb && onEventCb({ type: '_exit', code }) } catch (e) {}
+    currentProc = null
+  })
+  proc.on('error', (err) => {
+    try { onEventCb && onEventCb({ type: '_error', error: err.message }) } catch (e) {}
+  })
+}
+
+module.exports = { startChat, sendChatMessage, stopChat, isRunning }

@@ -321,5 +321,6 @@ module.exports = {
   supportsRename: false,
   supportsFork: false,
   supportsMemory: false,
-  supportsSnapshot: false
+  supportsSnapshot: false,
+  supportsChat: true
 }

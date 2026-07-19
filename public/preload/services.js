@@ -335,11 +335,8 @@ window.services = {
   unwatchMemoryDir,
   getAvailableProviders,
   getProvider,
-  // 对话
-  startChat: (opts, onEvent) => {
-    if (opts.provider && opts.provider !== 'claude') return { success: false, error: '暂不支持该平台对话' }
-    return chat.startClaudeChat(opts, onEvent)
-  },
+  // 对话（四平台）
+  startChat: chat.startChat,
   sendChatMessage: chat.sendChatMessage,
   stopChat: chat.stopChat,
   isChatRunning: chat.isRunning
