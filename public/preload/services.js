@@ -42,24 +42,25 @@ function searchSessions(query, opts = {}) {
   const q = (query || '').trim()
   if (!q) return []
   const limit = opts.limit || 100
+  const perProviderCap = limit // 每个 provider 各自最多收集 limit 条，最后合并排序取 limit
   const results = []
   for (const p of providers) {
     if (!p.isAvailable()) continue
-    if (results.length >= limit) break
     try {
       if (typeof p.searchSessions === 'function') {
-        // provider 自带搜索（OpenCode SQL）
-        results.push(...p.searchSessions(q, { limit: limit - results.length, caseSensitive: opts.caseSensitive }))
+        results.push(...p.searchSessions(q, { limit: perProviderCap, caseSensitive: opts.caseSensitive }))
         continue
       }
-      // 文件类：枚举会话，逐个 grep
+      // 文件类：枚举会话，逐个 grep（各 provider 独立配额，避免会话多的平台挤掉其他平台结果）
+      let got = 0
       for (const proj of p.scanProjects()) {
-        if (results.length >= limit) break
+        if (got >= perProviderCap) break
         const { sessions } = p.loadProjectSessions(proj.path, proj)
         for (const s of (sessions || [])) {
-          if (results.length >= limit) break
+          if (got >= perProviderCap) break
           const hit = grepSessionFile(s.path, q, opts.caseSensitive)
           if (hit) {
+            got++
             results.push({
               provider: p.id, projectName: proj.displayName, projectPath: proj.path,
               sessionPath: s.path, sessionId: s.sessionId, name: s.name,
