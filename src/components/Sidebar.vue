@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { IconSettings, IconSearch, IconClose, IconCollapseAll, IconExpandAll, IconRefresh, IconFolder, IconOpenExternal, IconFile, IconEdit, IconDelete, IconSun, IconMoon, IconStar, IconStarOutline, IconCheckbox, IconCheckboxChecked, IconSubagent, IconMore, IconTerminal, IconChat, IconMemory, IconFilter, IconCopy, IconFileSearch } from './icons'
+import { IconSettings, IconSearch, IconClose, IconCollapseAll, IconExpandAll, IconRefresh, IconFolder, IconOpenExternal, IconFile, IconEdit, IconDelete, IconSun, IconMoon, IconStar, IconStarOutline, IconCheckbox, IconCheckboxChecked, IconSubagent, IconMore, IconTerminal, IconChat, IconMemory, IconFilter, IconCopy, IconFileSearch, IconChart } from './icons'
 import { useTheme } from '../composables/useTheme'
 import { useSnackbar } from '../composables/useSnackbar'
 import { formatTime, formatSize, shortenPath } from '../composables/useFormat'
@@ -36,7 +36,8 @@ const emit = defineEmits([
   'toggle-favorite',
   'global-search',
   'global-search-active',
-  'open-search-result'
+  'open-search-result',
+  'open-stats'
 ])
 
 const { isDark, toggleTheme } = useTheme()
@@ -286,6 +287,9 @@ const filteredProjects = computed(() => {
     <div class="sidebar-header">
       <h2>会话管理</h2>
       <div class="header-actions">
+        <button class="icon-btn" @click="emit('open-stats')" title="统计洞察">
+          <IconChart />
+        </button>
         <button class="icon-btn" @click="toggleTheme" :title="isDark ? '切换到亮色模式' : '切换到暗色模式'">
           <IconSun v-if="isDark" />
           <IconMoon v-else />

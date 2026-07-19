@@ -324,6 +324,23 @@ function searchSessions(query, opts = {}) {
   }
 }
 
+// 花费/token 汇总（SQL SUM，快）
+function getCostStats() {
+  const db = getDb()
+  if (!db) return null
+  try {
+    const r = db.prepare(`SELECT
+      COALESCE(SUM(cost),0) cost,
+      COALESCE(SUM(tokens_input),0) ti,
+      COALESCE(SUM(tokens_output),0) tokenOut,
+      COALESCE(SUM(tokens_reasoning),0) tr,
+      COALESCE(SUM(tokens_cache_read),0) tcr,
+      COALESCE(SUM(tokens_cache_write),0) tcw
+      FROM session`).get()
+    return { cost: r.cost, tokensInput: r.ti, tokensOutput: r.tokenOut, tokensReasoning: r.tr, cacheRead: r.tcr, cacheWrite: r.tcw }
+  } catch (e) { return null } finally { db.close() }
+}
+
 module.exports = {
   id: PROVIDER_ID,
   name: PROVIDER_NAME,
@@ -335,6 +352,7 @@ module.exports = {
   deleteSession,
   deleteProjectSessions,
   searchSessions,
+  getCostStats,
   getResumeCommand,
   resumeSession,
   newSession,

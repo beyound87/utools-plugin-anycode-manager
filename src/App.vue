@@ -13,6 +13,7 @@ import DeleteConfirmDialog from './components/DeleteConfirmDialog.vue'
 import ForkDialog from './components/ForkDialog.vue'
 import ImagePreview from './components/ImagePreview.vue'
 import SettingsDrawer from './components/SettingsDrawer.vue'
+import StatsView from './components/StatsView.vue'
 import SnackBar from './components/SnackBar.vue'
 
 const { isDark, initThemeListener } = useTheme()
@@ -32,6 +33,7 @@ const memoryLoading = ref(false)
 const searchQuery = ref('')
 const sidebarCollapsed = ref(false)
 const showSettings = ref(false)
+const showStats = ref(false)
 const terminalCommand = ref(window.utools.dbStorage.getItem('terminalCommand') || '')
 const terminalApp = ref(window.utools.dbStorage.getItem('terminalApp') || 'auto')
 const isStandaloneWindow = ref(false)
@@ -609,6 +611,7 @@ onMounted(() => {
       @select-memory="selectMemory"
       @refresh="refresh"
       @open-settings="showSettings = true"
+      @open-stats="showStats = true"
       @open-session-window="openSessionWindow"
       @resume-session="resumeSession"
       @filter-memory-change="onFilterMemoryChange"
@@ -719,6 +722,8 @@ onMounted(() => {
       @update:terminal-app="terminalApp = $event"
       @close="showSettings = false"
     />
+
+    <StatsView :show="showStats" @close="showStats = false" />
 
     <SnackBar />
   </div>

@@ -81,6 +81,42 @@ function loadProjectSessions(projectPath, providerId, project) {
   return p.loadProjectSessions(projectPath, project)
 }
 
+// --- 统计洞察 ---
+// 会话数/大小/活跃度从缓存的元数据聚合；OpenCode 额外给花费/token（SQL）
+function getStats() {
+  const perProvider = {}
+  const activityByDay = {}
+  const projectSizes = []
+  let totalSessions = 0, totalSize = 0
+  for (const p of providers) {
+    if (!p.isAvailable()) continue
+    const st = { id: p.id, name: p.name, sessions: 0, size: 0, projects: 0 }
+    try {
+      for (const proj of p.scanProjects()) {
+        const { sessions } = p.loadProjectSessions(proj.path, proj)
+        const list = sessions || []
+        st.projects++
+        let projSize = 0
+        for (const s of list) {
+          st.sessions++; totalSessions++
+          const sz = s.size || 0
+          st.size += sz; totalSize += sz; projSize += sz
+          if (s.modifiedTime) {
+            const key = new Date(s.modifiedTime).toISOString().slice(0, 10)
+            activityByDay[key] = (activityByDay[key] || 0) + 1
+          }
+        }
+        if (list.length) projectSizes.push({ name: proj.displayName, provider: p.id, sessions: list.length, size: projSize })
+      }
+      if (typeof p.getCostStats === 'function') st.cost = p.getCostStats()
+    } catch (e) { console.error(`stats ${p.id} failed:`, e) }
+    perProvider[p.id] = st
+  }
+  const topProjects = projectSizes.sort((a, b) => b.sessions - a.sessions).slice(0, 8)
+  return { totalSessions, totalSize, perProvider, activityByDay, topProjects }
+}
+
+
 // --- 会话操作：根据 provider 路由 ---
 
 function readSessionFile(filePath, providerId) {
@@ -267,6 +303,7 @@ window.services = {
   getProjectsPath,
   getProjectsQuick,
   searchSessions,
+  getStats,
   loadProjectSessions,
   getAllProjects,
   readSessionFile,
