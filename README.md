@@ -133,6 +133,7 @@
 │   │   ├── DeleteConfirmDialog.vue # 删除确认弹窗
 │   │   ├── ForkDialog.vue          # Fork 分支弹窗
 │   │   ├── SettingsDrawer.vue      # 设置抽屉面板
+│   │   ├── StatsView.vue           # 统计洞察抽屉
 │   │   ├── ImagePreview.vue        # 图片预览
 │   │   ├── SnackBar.vue            # 全局提示条
 │   │   └── icons/
@@ -143,6 +144,7 @@
 │       ├── useDiff.js              # LCS diff 算法
 │       ├── useMarkdown.js          # Markdown 渲染
 │       ├── useSearch.js            # 会话内搜索
+│       ├── useSessionOverrides.js  # 跨平台别名/收藏（dbStorage）
 │       ├── useExport.js            # 导出功能
 │       ├── useSnackbar.js          # 全局提示状态
 │       ├── useTheme.js             # 主题管理
