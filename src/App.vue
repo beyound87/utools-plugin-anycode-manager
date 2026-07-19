@@ -3,6 +3,7 @@ import { ref, onMounted, nextTick, watch, computed } from 'vue'
 import { useTheme } from './composables/useTheme'
 import { useSnackbar } from './composables/useSnackbar'
 import { useDisplayMessages } from './composables/useMessageParser'
+import { useSessionOverrides } from './composables/useSessionOverrides'
 import { IconChevronLeft, IconChevronRight } from './components/icons'
 import Sidebar from './components/Sidebar.vue'
 import SessionView from './components/SessionView.vue'
@@ -16,6 +17,7 @@ import SnackBar from './components/SnackBar.vue'
 
 const { isDark, initThemeListener } = useTheme()
 const { showSnackbar } = useSnackbar()
+const { applyOverride, setAlias, toggleFavorite: toggleFavoriteOverride } = useSessionOverrides()
 
 // State
 const projects = ref([])
@@ -135,7 +137,7 @@ function loadProjectSessionsFor(name) {
     if (currentIdx < 0) return
     const proj = projects.value[currentIdx]
     const result = window.services.loadProjectSessions(proj.path, proj.provider, proj)
-    const sessions = result.sessions || []
+    const sessions = (result.sessions || []).map(applyOverride)
     projects.value = projects.value.map((p, i) =>
       i === currentIdx ? { ...p, sessions, sessionsLoaded: true, sessionsLoading: false } : p
     )
@@ -366,14 +368,27 @@ function startRename(session) {
 }
 
 function confirmRename(newName) {
-  const result = window.services.renameSession(renameDialog.value.session.path, newName, renameDialog.value.session.provider)
-  if (result.success) {
-    showSnackbar('已重命名')
-    loadProjects()
-  } else {
-    showSnackbar(result.error || '重命名失败', 'error')
+  const session = renameDialog.value.session
+  // 全平台统一走 dbStorage 别名，不再改文件
+  setAlias(session, newName)
+  applyOverrideToLoaded(session, { name: newName })
+  if (selectedSession.value && sameSession(selectedSession.value, session)) {
+    selectedSession.value = { ...selectedSession.value, name: newName }
   }
+  showSnackbar('已重命名')
   renameDialog.value.show = false
+}
+
+// 把覆盖就地应用到已加载的会话列表和选中会话，避免整表重载
+function sameSession(a, b) {
+  return a && b && (a.provider || 'claude') === (b.provider || 'claude') && (a.sessionId || a.path) === (b.sessionId || b.path)
+}
+function applyOverrideToLoaded(session, patch) {
+  for (const p of projects.value) {
+    if (!p.sessions?.length) continue
+    const s = p.sessions.find(s => sameSession(s, session))
+    if (s) Object.assign(s, patch)
+  }
 }
 
 // Fork
@@ -440,11 +455,11 @@ async function resumeSession(session) {
 
 // Toggle favorite from SessionView
 function toggleFavoriteFromView(session) {
-  if (!session?.path) return
-  const result = window.services.toggleFavorite(session.path, session.provider)
-  if (result.success) {
-    session.isFavorite = result.isFavorite
-    loadProjects()
+  if (!session) return
+  const nextFav = toggleFavoriteOverride(session)
+  applyOverrideToLoaded(session, { isFavorite: nextFav })
+  if (selectedSession.value && sameSession(selectedSession.value, session)) {
+    selectedSession.value = { ...selectedSession.value, isFavorite: nextFav }
   }
 }
 
@@ -549,6 +564,7 @@ onMounted(() => {
       @toggle-all="toggleAllProjects"
       @select-session="selectSession"
       @rename-session="startRename"
+      @toggle-favorite="toggleFavoriteFromView"
       @delete-session="handleDelete"
       @batch-delete="handleBatchDelete"
       @delete-project-sessions="handleDeleteProjectSessions"

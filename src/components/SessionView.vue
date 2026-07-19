@@ -527,12 +527,12 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   <template v-if="session">
     <div ref="contentHeaderRef" class="content-header">
       <div class="content-header-top">
-        <button v-if="!session.isSubagent && currentProvider?.supportsRename !== false" class="resume-btn" @click="emit('toggle-favorite', session)" :title="session.isFavorite ? '取消收藏' : '收藏'">
+        <button v-if="!session.isSubagent" class="resume-btn" @click="emit('toggle-favorite', session)" :title="session.isFavorite ? '取消收藏' : '收藏'">
           <IconStar v-if="session.isFavorite" :size="14" style="color: #ff9800" />
           <IconStarOutline v-else :size="14" />
         </button>
         <h3>{{ session.name }}</h3>
-        <button v-if="!session.isSubagent && currentProvider?.supportsRename !== false" class="resume-btn" @click="emit('rename', session)" title="重命名">
+        <button v-if="!session.isSubagent" class="resume-btn" @click="emit('rename', session)" title="重命名">
           <IconEdit :size="13" />
         </button>
       </div>

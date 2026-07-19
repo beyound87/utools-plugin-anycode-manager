@@ -31,7 +31,8 @@ const emit = defineEmits([
   'open-session-window',
   'resume-session',
   'filter-memory-change',
-  'delete-project-sessions'
+  'delete-project-sessions',
+  'toggle-favorite'
 ])
 
 const { isDark, toggleTheme } = useTheme()
@@ -99,8 +100,7 @@ function toggleSubagents(sessionPath) {
 // Favorite toggle
 function toggleFavorite(session, event) {
   event.stopPropagation()
-  const result = window.services.toggleFavorite(session.path, session.provider)
-  if (result.success) emit('refresh')
+  emit('toggle-favorite', session)
 }
 
 // Session item dropdown menu
@@ -160,8 +160,7 @@ function menuResume() {
 
 function menuToggleFavorite() {
   const s = sidebarMenu.value.session; closeMenu()
-  const result = window.services.toggleFavorite(s.path, s.provider)
-  if (result.success) emit('refresh')
+  emit('toggle-favorite', s)
 }
 
 function menuRename() {
@@ -454,12 +453,12 @@ const filteredProjects = computed(() => {
         <IconCopy :size="13" />
         <span>复制恢复命令</span>
       </button>
-      <button v-if="sessionProvider?.supportsRename !== false" @click="menuToggleFavorite">
+      <button @click="menuToggleFavorite">
         <IconStar v-if="sidebarMenu.session.isFavorite" :size="13" style="color: #ff9800" />
         <IconStarOutline v-else :size="13" />
         <span>{{ sidebarMenu.session.isFavorite ? '取消收藏' : '收藏' }}</span>
       </button>
-      <button v-if="sessionProvider?.supportsRename !== false" @click="menuRename">
+      <button @click="menuRename">
         <IconEdit :size="13" />
         <span>重命名</span>
       </button>
