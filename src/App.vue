@@ -101,6 +101,27 @@ const agentToolUseMap = computed(() => {
 const sessionViewRef = ref(null)
 const sidebarRef = ref(null)
 
+// 自动刷新：定时轮询 getProjectsQuick（覆盖全部 provider 含 OpenCode），仅签名变化时静默刷新
+let autoRefreshTimer = null
+let lastProjectsSig = ''
+function projectsSignature(list) {
+  return list.map(p => `${p.provider}:${p.name}:${p.sessionCount}:${new Date(p.latestMtime).getTime()}`).join('|')
+}
+function startAutoRefresh() {
+  stopAutoRefresh()
+  autoRefreshTimer = setInterval(() => {
+    try {
+      const quick = window.services.getProjectsQuick()
+      const sig = projectsSignature(quick)
+      if (lastProjectsSig && sig !== lastProjectsSig) loadProjects()
+      lastProjectsSig = sig
+    } catch (e) {}
+  }, 8000)
+}
+function stopAutoRefresh() {
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null }
+}
+
 // Dialog state
 const renameDialog = ref({ show: false, session: null })
 const deleteConfirm = ref({ show: false, session: null, showHint: true })
@@ -135,6 +156,7 @@ function loadProjects(force = false) {
   }
   try {
     const quickProjects = window.services.getProjectsQuick()
+    lastProjectsSig = projectsSignature(quickProjects)
     projects.value = quickProjects.map(p => {
       const prev = prevMap[p.name]
       const keep = !force && prev?.sessionsLoaded
@@ -561,10 +583,12 @@ onMounted(() => {
     if (code === 'sessions') {
       loadProjects()
       autoSelectLatestSession()
+      startAutoRefresh()
     }
   })
   window.utools.onPluginOut(() => {
     window.services.unwatchSessionFile()
+    stopAutoRefresh()
   })
   sessionBroadcast.onmessage = ({ data }) => {
     if (data.action === 'delete') {
