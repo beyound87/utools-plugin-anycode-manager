@@ -29,16 +29,20 @@ const currentProvider = computed(() => {
   return p ? window.services.getProvider(p) : null
 })
 
-// 构建完整恢复命令：cd 进项目目录 + 各 CLI 恢复命令（会话按目录存储，必须在项目目录下恢复）
+// assistant 标签按 provider 显示（Claude/Codex/Gemini/OpenCode），user 统一「用户」
+const PROVIDER_ASSISTANT_LABEL = { claude: 'Claude', codex: 'Codex', gemini: 'Gemini', opencode: 'OpenCode' }
+function displayRoleLabel(role) {
+  if (role === 'assistant') return PROVIDER_ASSISTANT_LABEL[props.session?.provider] || getRoleLabel(role)
+  return getRoleLabel(role)
+}
+
+// 复制/显示只给恢复命令本身；cd 进目录由「在终端中恢复」按钮处理（launchInTerminal）
 function buildResumeCommand(s) {
   if (!s?.sessionId) return s?.cwd || ''
   const provider = s.provider ? window.services.getProvider(s.provider) : null
-  const resume = provider?.getResumeCommand
+  return provider?.getResumeCommand
     ? provider.getResumeCommand(s.sessionId, undefined, s.path)
     : `${window.utools.dbStorage.getItem('terminalCommand') || 'claude'} --resume ${s.sessionId}`
-  if (!s.cwd) return resume
-  const cd = window.utools.isWindows() ? `cd /d "${s.cwd}"` : `cd "${s.cwd}"`
-  return `${cd} && ${resume}`
 }
 
 const resumeCommandText = computed(() => buildResumeCommand(props.session))
@@ -701,7 +705,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
         >
           <div class="message-header">
             <span class="role-badge" :class="item.isApiErrorMessage ? 'role-error' : ('role-' + getMessageRole(item))">
-              {{ item.isApiErrorMessage ? '错误' : getRoleLabel(getMessageRole(item)) }}
+              {{ item.isApiErrorMessage ? '错误' : displayRoleLabel(getMessageRole(item)) }}
             </span>
             <span class="message-time">{{ formatTime(item.timestamp) }}</span>
           </div>

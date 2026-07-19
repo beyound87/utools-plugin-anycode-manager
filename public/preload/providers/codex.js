@@ -237,6 +237,13 @@ function readSessionFile(filePath) {
 function normalizeCodexItems(rawItems) {
   const normalized = []
   let sessionId = '', cwd = ''
+  // response_item 是完整记录（含 message/reasoning/function_call）；有它就以它为准，
+  // 跳过 event_msg 的 user_message/agent_message（那是流式事件，与 response_item 重复）
+  const hasResponseMessages = rawItems.some(it => it.type === 'response_item' && it.payload?.type === 'message')
+
+  const push = (type, content, ts, uuid, extra) => {
+    if (content.length > 0) normalized.push({ type, message: { role: type, content }, sessionId, cwd, timestamp: ts, uuid, ...(extra || {}) })
+  }
 
   for (const item of rawItems) {
     if (item.type === 'session_meta' && item.payload) {
@@ -244,89 +251,45 @@ function normalizeCodexItems(rawItems) {
       cwd = item.payload.cwd || ''
       continue
     }
-
     const ts = item.timestamp || ''
 
     if (item.type === 'event_msg' && item.payload) {
+      if (hasResponseMessages) continue // 避免与 response_item 重复
       const p = item.payload
-      if (p.type === 'user_message' && p.message) {
-        normalized.push({
-          type: 'user',
-          message: { role: 'user', content: [{ type: 'text', text: p.message }] },
-          sessionId, cwd, timestamp: ts, uuid: p.client_id || ts + '-user-' + normalized.length
-        })
-      }
-      if (p.type === 'agent_message' && p.message) {
-        normalized.push({
-          type: 'assistant',
-          message: { role: 'assistant', content: [{ type: 'text', text: p.message }] },
-          sessionId, cwd, timestamp: ts, uuid: ts + '-agent-' + normalized.length
-        })
-      }
+      if (p.type === 'user_message' && p.message) push('user', [{ type: 'text', text: p.message }], ts, p.client_id || ts + '-u' + normalized.length)
+      else if (p.type === 'agent_message' && p.message) push('assistant', [{ type: 'text', text: p.message }], ts, ts + '-a' + normalized.length)
       continue
     }
 
     if (item.type === 'response_item' && item.payload) {
       const p = item.payload
-      const role = p.role === 'assistant' ? 'assistant' : (p.role === 'developer' ? 'user' : p.role || 'assistant')
-      const content = []
+      const uuid = p.id || p.call_id || ts + '-r' + normalized.length
 
-      if (Array.isArray(p.content)) {
-        for (const block of p.content) {
-          if (block.type === 'output_text' || block.type === 'input_text') {
-            content.push({ type: 'text', text: block.text || '' })
-          } else if (block.type === 'reasoning') {
-            content.push({ type: 'thinking', thinking: block.text || block.summary || '' })
-          } else if (block.type === 'function_call') {
-            const mappedName = mapToolName(block.name)
-            const input = parseToolInput(block.arguments)
-            // exec_command → Bash: 映射 cmd_string → command
-            if (mappedName === 'Bash' && input.cmd_string && !input.command) input.command = input.cmd_string
-            content.push({
-              type: 'tool_use', name: mappedName,
-              id: block.call_id || block.id || '', input
-            })
-          } else if (block.type === 'function_call_output') {
-            content.push({
-              type: 'tool_result', tool_use_id: block.call_id || '',
-              content: block.output || '', is_error: block.status === 'error'
-            })
-          } else {
-            content.push({ type: 'text', text: JSON.stringify(block) })
+      if (p.type === 'message') {
+        const role = p.role === 'assistant' ? 'assistant' : 'user'
+        const content = []
+        if (Array.isArray(p.content)) {
+          for (const b of p.content) {
+            if (b.type === 'input_text' || b.type === 'output_text' || b.type === 'text') content.push({ type: 'text', text: b.text || '' })
           }
-        }
-      } else if (typeof p.content === 'string') {
-        content.push({ type: 'text', text: p.content })
-      }
-
-      if (content.length > 0) {
-        const mappedType = role === 'assistant' ? 'assistant' : 'user'
-        // developer role 消息在 Codex 中是系统指令，标记为 isMeta
-        const isMeta = p.role === 'developer'
-        normalized.push({
-          type: mappedType,
-          message: { role: mappedType, content },
-          sessionId, cwd, timestamp: ts,
-          uuid: (p.id || ts + '-' + normalized.length),
-          isMeta,
-          _raw: item
-        })
+        } else if (typeof p.content === 'string') content.push({ type: 'text', text: p.content })
+        push(role, content, ts, uuid, { isMeta: p.role === 'developer', _raw: item })
+      } else if (p.type === 'reasoning') {
+        let text = ''
+        if (Array.isArray(p.summary)) text = p.summary.map(s => typeof s === 'string' ? s : (s.text || '')).join('\n\n')
+        else if (typeof p.summary === 'string') text = p.summary
+        else if (typeof p.text === 'string') text = p.text
+        push('assistant', text ? [{ type: 'thinking', thinking: text }] : [], ts, uuid, { _raw: item })
+      } else if (p.type === 'function_call' || p.type === 'custom_tool_call') {
+        const mappedName = mapToolName(p.name)
+        const input = parseToolInput(p.arguments || p.input)
+        if (mappedName === 'Bash' && input.cmd_string && !input.command) input.command = input.cmd_string
+        push('assistant', [{ type: 'tool_use', name: mappedName, id: p.call_id || p.id || '', input }], ts, uuid, { _raw: item })
+      } else if (p.type === 'function_call_output' || p.type === 'custom_tool_call_output') {
+        const out = typeof p.output === 'string' ? p.output : JSON.stringify(p.output || '')
+        push('assistant', [{ type: 'tool_result', tool_use_id: p.call_id || '', content: out, is_error: p.status === 'error' }], ts, uuid, { _raw: item })
       }
       continue
-    }
-
-    // function_call / function_call_output 独立事件
-    if (item.type === 'function_call' || item.type === 'function_call_output') {
-      const content = item.type === 'function_call'
-        ? [{ type: 'tool_use', name: item.name || '', id: item.call_id || '', input: parseToolInput(item.arguments) }]
-        : [{ type: 'tool_result', tool_use_id: item.call_id || '', content: item.output || '', is_error: item.status === 'error' }]
-      normalized.push({
-        type: 'assistant',
-        message: { role: 'assistant', content },
-        sessionId, cwd, timestamp: ts,
-        uuid: item.id || ts + '-fc-' + normalized.length,
-        _raw: item
-      })
     }
   }
   return normalized
