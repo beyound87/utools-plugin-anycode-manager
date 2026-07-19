@@ -478,7 +478,7 @@ function toggleChat() {
   const result = window.services.startChat({
     provider: s.provider, sessionId: s.sessionId, cwd: s.cwd || '',
     command: terminalCommand.value || undefined,
-    permissionMode: chatPermMode.value, model: chatModel.value || undefined
+    permissionMode: chatPermMode.value, model: chatModel.value || undefined, effort: chatEffort.value || undefined
   }, onChatEvent)
   if (!result.success) { showSnackbar('启动对话失败: ' + result.error, 'error'); stopChatSession() }
 }
@@ -636,7 +636,7 @@ function startNewChat() {
   window.services.unwatchSessionFile()
   const result = window.services.newChatSession({
     provider: p, cwd, command: terminalCommand.value || undefined,
-    permissionMode: chatPermMode.value, model: chatModel.value || undefined
+    permissionMode: chatPermMode.value, model: chatModel.value || undefined, effort: chatEffort.value || undefined
   }, onChatEvent)
   if (!result.success) { showSnackbar('新建会话失败: ' + result.error, 'error'); stopChatSession() }
 }

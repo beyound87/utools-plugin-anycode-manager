@@ -33,7 +33,7 @@ const EFFORTS = [
   { value: 'max', label: 'Max' }
 ]
 
-const hasEffort = computed(() => ['codex', 'opencode'].includes(props.provider))
+const hasEffort = computed(() => ['claude', 'codex', 'opencode'].includes(props.provider))
 const modelList = ref([])
 watch(() => props.provider, (p) => {
   if (p && window.services?.listModels) {
@@ -213,20 +213,21 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
 /* 激活态 */
 .composer {
   border-top: 1px solid #e0e0e0; background: #fafafa;
-  padding: 6px 12px 8px;
+  padding: 8px 14px 10px;
 }
 :global(.dark) .composer { background: #1a1a1a; border-color: #2a2a2a; }
 
 /* 工具栏 */
-.toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; overflow-x: auto; min-height: 28px; }
+.toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-height: 30px; row-gap: 4px; }
 .toolbar-sep { width: 1px; height: 16px; background: #ddd; flex-shrink: 0; margin: 0 2px; }
 :global(.dark) .toolbar-sep { background: #444; }
 
 .mode-pills, .effort-pills { display: flex; gap: 1px; background: #e8e8e8; border-radius: 6px; padding: 1px; flex-shrink: 0; }
 :global(.dark) .mode-pills, :global(.dark) .effort-pills { background: #333; }
 .mode-pill, .effort-pill {
-  padding: 2px 8px; border: none; background: none; border-radius: 5px;
+  padding: 3px 10px; border: none; background: none; border-radius: 5px;
   font-size: 11px; cursor: pointer; color: inherit; white-space: nowrap; transition: all 0.12s;
+  line-height: 1.4;
 }
 .mode-pill.active { background: #fff; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .mode-pill.danger { background: #fee; color: #d32f2f; }
