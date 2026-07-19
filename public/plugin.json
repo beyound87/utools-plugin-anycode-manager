@@ -13,6 +13,18 @@
         "AnyCode会话管理",
         "AC会话"
       ]
+    },
+    {
+      "code": "recent-sessions",
+      "explain": "最近的 AI 编程会话",
+      "mainPush": true,
+      "cmds": [
+        "AnyCode",
+        "会话",
+        "cc",
+        "codex",
+        "opencode"
+      ]
     }
   ]
 }

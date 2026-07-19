@@ -87,6 +87,33 @@ function openSearchResult(result) {
 }
 const pendingInSearch = ref('')
 
+// uTools 主搜索框推送：最近会话（取最近几个项目的会话，按时间排，关键词过滤）
+let pendingMainPush = null
+function buildMainPushItems(searchWord) {
+  const q = (searchWord || '').toLowerCase()
+  let quick = []
+  try { quick = window.services.getProjectsQuick() } catch (e) { return [] }
+  const recent = []
+  for (const p of quick.slice(0, 6)) {
+    try {
+      const { sessions } = window.services.loadProjectSessions(p.path, p.provider, p)
+      for (const s of (sessions || [])) recent.push({ ...applyOverride(s), projectName: p.displayName })
+    } catch (e) {}
+    if (recent.length > 80) break
+  }
+  recent.sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime))
+  return recent
+    .filter(s => !q || (s.name || '').toLowerCase().includes(q) || (s.cwd || '').toLowerCase().includes(q))
+    .slice(0, 12)
+    .map(s => ({
+      text: s.name || s.sessionId || '会话',
+      title: s.name || s.sessionId || '会话',
+      description: s.projectName || s.cwd || '',
+      icon: 'logo.png',
+      provider: s.provider, sessionPath: s.path, sessionId: s.sessionId, cwd: s.cwd
+    }))
+}
+
 // Computed
 const displayMessages = useDisplayMessages(sessionContent)
 
@@ -652,8 +679,30 @@ onMounted(() => {
       loadProjects()
       autoSelectLatestSession()
       startAutoRefresh()
+    } else if (code === 'recent-sessions') {
+      loadProjects()
+      startAutoRefresh()
+      const t = pendingMainPush
+      pendingMainPush = null
+      if (t && t.sessionPath) {
+        selectSession(applyOverride({
+          provider: t.provider, path: t.sessionPath, sessionId: t.sessionId,
+          name: t.title, cwd: t.cwd, isFavorite: false, subagents: []
+        }))
+      } else {
+        autoSelectLatestSession()
+      }
     }
   })
+  // 主搜索框推送最近会话（特性检测，部分环境无 onMainPush）
+  if (typeof window.utools.onMainPush === 'function') {
+    try {
+      window.utools.onMainPush(
+        ({ searchWord }) => buildMainPushItems(searchWord),
+        (action) => { pendingMainPush = action.option || null; return true }
+      )
+    } catch (e) { console.warn('onMainPush 注册失败:', e) }
+  }
   window.utools.onPluginOut(() => {
     window.services.unwatchSessionFile()
     stopAutoRefresh()
