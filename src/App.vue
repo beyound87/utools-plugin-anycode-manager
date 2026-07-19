@@ -14,6 +14,7 @@ import ForkDialog from './components/ForkDialog.vue'
 import ImagePreview from './components/ImagePreview.vue'
 import SettingsDrawer from './components/SettingsDrawer.vue'
 import StatsView from './components/StatsView.vue'
+import ChatComposer from './components/ChatComposer.vue'
 import SnackBar from './components/SnackBar.vue'
 
 const { isDark, initThemeListener } = useTheme()
@@ -27,6 +28,12 @@ const expandedProjects = ref({})
 const selectedSession = ref(null)
 const sessionContent = ref([])
 const loading = ref(false)
+// 对话状态
+const chatActive = ref(false)          // 是否处于对话模式
+const chatSending = ref(false)         // 当前是否有一轮进行中
+const chatPermMode = ref(window.utools.dbStorage.getItem('anycode:chatPermMode') || 'plan')
+let chatLiveItem = null                // 流式中的 live assistant item
+let chatWatchSuspended = false
 const selectedMemory = ref(null)
 const memoryFiles = ref([])
 const memoryLoading = ref(false)
@@ -409,9 +416,10 @@ watch(memoryFiles, (files) => {
 }, { deep: true })
 
 function selectSession(session, fromSearch = false) {
+  // 切会话时停止当前对话进程
+  if (chatActive.value) stopChatSession()
   selectedMemory.value = null
   memoryFiles.value = []
-  // 非搜索打开时清除待搜索词，避免残留词劫持后续会话（防止每次切会话都自动开搜索/破坏分页）
   if (!fromSearch) pendingInSearch.value = ''
   selectedSession.value = session
   // 记住上次打开的会话
@@ -437,6 +445,159 @@ function selectSession(session, fromSearch = false) {
       }
     }
   })
+}
+
+// ============ 对话功能 ============
+
+function toggleChat() {
+  if (chatActive.value) { stopChatSession(); return }
+  const s = selectedSession.value
+  if (!s?.sessionId || s.isSubagent) return
+  const p = s.provider ? window.services.getProvider(s.provider) : null
+  if (!p?.supportsChat) { showSnackbar('该平台暂不支持对话', 'error'); return }
+  chatActive.value = true
+  // 挂起文件监听（流式期间由 onChatEvent 驱动，避免 watch 触发整表替换冲掉 live item）
+  chatWatchSuspended = true
+  window.services.unwatchSessionFile()
+  const result = window.services.startChat({
+    provider: s.provider, sessionId: s.sessionId, cwd: s.cwd || '',
+    command: terminalCommand.value || undefined,
+    permissionMode: chatPermMode.value, model: undefined
+  }, onChatEvent)
+  if (!result.success) { showSnackbar('启动对话失败: ' + result.error, 'error'); stopChatSession() }
+}
+
+function stopChatSession() {
+  window.services.stopChat()
+  chatActive.value = false
+  chatSending.value = false
+  chatLiveItem = null
+  chatWatchSuspended = false
+  // 恢复文件监听 + 重载对齐落盘数据
+  if (selectedSession.value) {
+    loadSessionContent(selectedSession.value.path)
+    window.services.watchSessionFile(selectedSession.value.path, () => {
+      if (selectedSession.value) loadSessionContent(selectedSession.value.path, true)
+      loadProjects()
+    })
+  }
+}
+
+function sendChat(msg) {
+  if (!chatActive.value || chatSending.value) return
+  // push 用户消息到 sessionContent（实时显示）
+  const userItem = {
+    type: 'user', message: { role: 'user', content: [] },
+    sessionId: selectedSession.value?.sessionId, cwd: selectedSession.value?.cwd,
+    timestamp: new Date().toISOString(), uuid: 'chat-user-' + Date.now()
+  }
+  if (msg.text) userItem.message.content.push({ type: 'text', text: msg.text })
+  for (const img of (msg.images || [])) {
+    userItem.message.content.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.data } })
+  }
+  // 附件：以 @ 路径注入文本（CLI 识别 @文件路径 自动读取）
+  if (msg.attachments?.length) {
+    const paths = msg.attachments.map(a => '@' + a).join(' ')
+    const textBlock = userItem.message.content.find(b => b.type === 'text')
+    if (textBlock) textBlock.text = paths + '\n' + textBlock.text
+    else userItem.message.content.unshift({ type: 'text', text: paths })
+  }
+  sessionContent.value = [...sessionContent.value, userItem]
+  nextTick(() => sessionViewRef.value?.scrollToEnd())
+  chatSending.value = true
+  const result = window.services.sendChatMessage({ text: msg.text, images: msg.images })
+  if (!result.success) { showSnackbar('发送失败: ' + result.error, 'error'); chatSending.value = false }
+}
+
+function onChatEvent(ev) {
+  if (ev.type === 'assistant') {
+    // 完整 assistant 消息（替换 live item）
+    const item = {
+      type: 'assistant', message: ev.message, sessionId: ev.session_id,
+      cwd: selectedSession.value?.cwd, timestamp: new Date().toISOString(), uuid: ev.uuid || 'chat-a-' + Date.now(),
+      _stats: ev.message?.usage ? {
+        input_tokens: ev.message.usage.input_tokens || 0,
+        output_tokens: ev.message.usage.output_tokens || 0,
+        model: ev.message.model || '', durationMs: 0
+      } : undefined
+    }
+    // 替换 live item 或追加
+    if (chatLiveItem) {
+      const idx = sessionContent.value.indexOf(chatLiveItem)
+      if (idx >= 0) sessionContent.value[idx] = item
+      else sessionContent.value = [...sessionContent.value, item]
+      chatLiveItem = null
+    } else {
+      sessionContent.value = [...sessionContent.value, item]
+    }
+    nextTick(() => sessionViewRef.value?.scrollToEnd())
+  } else if (ev.type === 'stream_event' && ev.event) {
+    // 打字机增量
+    const se = ev.event
+    if (se.type === 'content_block_delta') {
+      if (!chatLiveItem) {
+        chatLiveItem = {
+          type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: '' }] },
+          sessionId: ev.session_id, cwd: selectedSession.value?.cwd,
+          timestamp: new Date().toISOString(), uuid: 'chat-live-' + Date.now()
+        }
+        sessionContent.value = [...sessionContent.value, chatLiveItem]
+      }
+      const delta = se.delta
+      if (delta?.type === 'text_delta' && delta.text) {
+        const blocks = chatLiveItem.message.content
+        const last = blocks[blocks.length - 1]
+        if (last?.type === 'text') last.text += delta.text
+        else blocks.push({ type: 'text', text: delta.text })
+        // 触发 Vue 响应式
+        sessionContent.value = [...sessionContent.value]
+      } else if (delta?.type === 'thinking_delta' && delta.thinking) {
+        const blocks = chatLiveItem.message.content
+        const last = blocks[blocks.length - 1]
+        if (last?.type === 'thinking') last.thinking += delta.thinking
+        else blocks.push({ type: 'thinking', thinking: delta.thinking })
+        sessionContent.value = [...sessionContent.value]
+      }
+      nextTick(() => sessionViewRef.value?.scrollToEnd())
+    } else if (se.type === 'content_block_start' && se.content_block?.type === 'tool_use') {
+      // 工具调用开始
+      if (!chatLiveItem) {
+        chatLiveItem = {
+          type: 'assistant', message: { role: 'assistant', content: [] },
+          sessionId: ev.session_id, cwd: selectedSession.value?.cwd,
+          timestamp: new Date().toISOString(), uuid: 'chat-live-' + Date.now()
+        }
+        sessionContent.value = [...sessionContent.value, chatLiveItem]
+      }
+      chatLiveItem.message.content.push({
+        type: 'tool_use', name: se.content_block.name || '',
+        id: se.content_block.id || '', input: {}
+      })
+      sessionContent.value = [...sessionContent.value]
+    }
+  } else if (ev.type === 'user' && ev.message?.content?.some(b => b.type === 'tool_result')) {
+    // 工具执行结果（CLI 自动执行后回传）
+    sessionContent.value = [...sessionContent.value, {
+      type: 'user', message: ev.message, sessionId: ev.session_id,
+      cwd: selectedSession.value?.cwd, timestamp: ev.timestamp || new Date().toISOString(),
+      uuid: ev.uuid || 'chat-tr-' + Date.now()
+    }]
+    chatLiveItem = null // 下一个 assistant 是新消息
+    nextTick(() => sessionViewRef.value?.scrollToEnd())
+  } else if (ev.type === 'result') {
+    chatSending.value = false
+    chatLiveItem = null
+  } else if (ev.type === '_exit' || ev.type === '_error') {
+    chatSending.value = false
+    chatLiveItem = null
+    if (ev.type === '_error') showSnackbar('对话进程出错: ' + (ev.error || ''), 'error')
+    if (chatActive.value) stopChatSession()
+  }
+}
+
+function setChatPermMode(mode) {
+  chatPermMode.value = mode
+  try { window.utools.dbStorage.setItem('anycode:chatPermMode', mode) } catch (e) {}
 }
 
 function refresh() {
@@ -717,6 +878,8 @@ onMounted(() => {
   }
   window.utools.onPluginOut(() => {
     window.services.unwatchSessionFile()
+    window.services.stopChat()
+    chatActive.value = false
     stopAutoRefresh()
   })
   document.addEventListener('keydown', onGlobalKey)
@@ -809,6 +972,17 @@ onMounted(() => {
         @toggle-favorite="toggleFavoriteFromView"
         @select-session="selectSession"
         @open-session-window="openSessionWindow"
+      />
+      <ChatComposer
+        v-if="selectedSession && !selectedSession.isSubagent && selectedSession.provider === 'claude'"
+        :active="chatActive"
+        :sending="chatSending"
+        :perm-mode="chatPermMode"
+        :provider="selectedSession.provider"
+        @toggle-chat="toggleChat"
+        @stop-chat="stopChatSession"
+        @send="sendChat"
+        @update:perm-mode="setChatPermMode"
       />
     </main>
 

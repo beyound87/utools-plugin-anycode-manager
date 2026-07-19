@@ -2,6 +2,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const os = require('node:os')
 const { grepSessionFile } = require('./providers/common')
+const chat = require('./providers/chat')
 
 // Provider registry
 const claudeProvider = require('./providers/claude')
@@ -333,5 +334,14 @@ window.services = {
   watchMemoryDir,
   unwatchMemoryDir,
   getAvailableProviders,
-  getProvider
+  getProvider,
+  // 对话
+  startChat: (opts, onEvent) => {
+    if (opts.provider && opts.provider !== 'claude') return { success: false, error: '暂不支持该平台对话' }
+    return chat.startClaudeChat(opts, onEvent)
+  },
+  sendChatMessage: chat.sendChatMessage,
+  stopChat: chat.stopChat,
+  isChatRunning: chat.isRunning
 }
+

@@ -554,5 +554,6 @@ module.exports = {
   supportsRename: true,
   supportsFork: true,
   supportsMemory: true,
-  supportsSnapshot: true
+  supportsSnapshot: true,
+  supportsChat: true
 }
