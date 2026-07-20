@@ -1,19 +1,26 @@
 <script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
 import { IconCopy, IconDownload, IconClose } from './icons'
 import { useSnackbar } from '../composables/useSnackbar'
 
 const props = defineProps({
   show: Boolean,
-  src: String,
-  mediaType: String
+  src: String
 })
 
 const emit = defineEmits(['close'])
 const { showSnackbar } = useSnackbar()
+const imgRef = ref(null)
+
+function onKeydown(e) {
+  if (e.key === 'Escape' && props.show) emit('close')
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 function copyImage() {
   try {
-    const img = document.querySelector('.preview-img')
+    const img = imgRef.value
     if (!img) return
     const canvas = document.createElement('canvas')
     canvas.width = img.naturalWidth
@@ -64,7 +71,7 @@ function saveImage() {
           <IconClose />
         </button>
       </div>
-      <img :src="src" class="preview-img" />
+      <img ref="imgRef" :src="src" alt="preview" class="preview-img" />
     </div>
   </Transition>
 </template>

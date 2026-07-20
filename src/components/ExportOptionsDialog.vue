@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { defaultExportOptions } from '../composables/useExport'
 
 const props = defineProps({
@@ -14,11 +14,17 @@ const options = ref({ ...defaultExportOptions })
 watch(() => props.show, (v) => {
   if (v) options.value = { ...defaultExportOptions }
 })
+
+function onKeydown(e) {
+  if (e.key === 'Escape' && props.show) emit('cancel')
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
   <Transition name="fade">
-    <div v-if="show" class="dialog-overlay">
+    <div v-if="show" class="dialog-overlay" @click.self="emit('cancel')">
       <div class="dialog-card">
         <h3 class="dialog-title">导出{{ format === 'image' ? '长图' : 'HTML' }}设置</h3>
         <div class="option-list">
@@ -72,13 +78,14 @@ watch(() => props.show, (v) => {
 }
 .dialog-card {
   background: #fff;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 24px;
   width: 380px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.2);
 }
 :global(.dark .dialog-card) {
   background: #2a2a2a;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 .dialog-title {
   margin: 0 0 16px;

@@ -237,16 +237,6 @@ export function useDisplayMessages(sessionContent) {
     }
 
     for (const item of raw) {
-      if (item.type === 'file-history-snapshot') {
-        merged.push({
-          uuid: item.messageId + '-snap',
-          timestamp: item.snapshot?.timestamp,
-          isSnapshot: true,
-          snapshotData: item.snapshot,
-          _stats: { input_tokens: 0, output_tokens: 0, cache_creation: 0, cache_read: 0, model: '', stop_reason: '', durationMs: 0 }
-        })
-        continue
-      }
       const msg = item.message || {}
       const role = msg.role || item.type
       const content = msg.content

@@ -115,7 +115,6 @@ function walkDateDirs(root, results) {
                   cwd = meta.payload.cwd || ''
                   sessionId = meta.payload.id || ''
                   if (meta.payload.parent_thread_id) parentThreadId = meta.payload.parent_thread_id
-                  if (meta.payload.source && typeof meta.payload.source === 'object') parentThreadId = meta.payload.parent_thread_id
                 }
               }
             } catch (e) {}

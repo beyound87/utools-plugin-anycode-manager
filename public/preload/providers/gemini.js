@@ -71,22 +71,36 @@ function scanProjects() {
   return projects.sort((a, b) => b.latestMtime - a.latestMtime)
 }
 
-function loadProjectSessions(projectPath) {
+// ponytail: 元数据缓存 — key=filePath value={mtimeMs, meta}
+const sessionMetaCache = new Map()
+
+function loadProjectSessions(projectPath, _project) {
   try {
     const files = fs.readdirSync(projectPath).filter(f => f.endsWith('.jsonl') || f.endsWith('.json'))
     const sessions = files.map(file => {
       const filePath = path.join(projectPath, file)
       const fileStat = fs.statSync(filePath)
+      const mtimeMs = fileStat.mtime.getTime()
       let sessionId = file.replace(/\.(jsonl|json)$/, '')
       let name = sessionId
       let timestamp = fileStat.mtime.toISOString()
       let cwd = ''
 
+      // 缓存命中则跳过文件读取
+      const cached = sessionMetaCache.get(filePath)
+      if (cached && cached.mtimeMs === mtimeMs) {
+        return { ...cached.meta, size: fileStat.size, modifiedTime: fileStat.mtime, subagents: [], provider: PROVIDER_ID }
+      }
+
       try {
-        const content = fs.readFileSync(filePath, 'utf-8')
+        // 只读头部 16KB 取 session_metadata（避免全量读大文件）
         if (file.endsWith('.jsonl')) {
-          const items = parseJsonl(content)
-          // 从 session_metadata 取信息
+          const fd = fs.openSync(filePath, 'r')
+          const headSize = Math.min(fileStat.size, 16 * 1024)
+          const buf = Buffer.alloc(headSize)
+          fs.readSync(fd, buf, 0, headSize, 0)
+          fs.closeSync(fd)
+          const items = parseJsonl(buf.toString('utf-8'))
           for (const item of items.slice(0, 5)) {
             if (item.type === 'session_metadata') {
               sessionId = item.sessionId || sessionId
@@ -99,7 +113,7 @@ function loadProjectSessions(projectPath) {
           }
           if (name === sessionId) name = extractSessionName(items, name)
         } else {
-          // 旧 JSON 格式
+          const content = fs.readFileSync(filePath, 'utf-8')
           const record = JSON.parse(content)
           sessionId = record.sessionId || sessionId
           if (record.summary) name = record.summary
@@ -108,11 +122,9 @@ function loadProjectSessions(projectPath) {
         }
       } catch (e) {}
 
-      return {
-        name, path: filePath, sessionId, timestamp, cwd,
-        isFavorite: false, size: fileStat.size, modifiedTime: fileStat.mtime,
-        subagents: [], provider: PROVIDER_ID
-      }
+      const meta = { name, path: filePath, sessionId, timestamp, cwd, isFavorite: false }
+      sessionMetaCache.set(filePath, { mtimeMs, meta })
+      return { ...meta, size: fileStat.size, modifiedTime: fileStat.mtime, subagents: [], provider: PROVIDER_ID }
     }).sort((a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime))
 
     return { success: true, sessions }
@@ -205,9 +217,13 @@ function normalizeGeminiJsonlItems(rawItems) {
             is_error: false
           })
         } else if (part.executableCode) {
-          content.push({ type: 'tool_use', name: 'code_execution', id: 'exec-' + normalized.length, input: { code: part.executableCode.code || '' } })
+          const execId = 'exec-' + normalized.length + '-' + content.length
+          content.push({ type: 'tool_use', name: 'code_execution', id: execId, input: { code: part.executableCode.code || '' } })
         } else if (part.codeExecutionResult) {
-          content.push({ type: 'tool_result', tool_use_id: 'exec-' + (normalized.length - 1), content: part.codeExecutionResult.output || '', is_error: part.codeExecutionResult.outcome === 'ERROR' })
+          // 配对上一个 executableCode 的 ID
+          let paired = null
+          for (let k = content.length - 1; k >= 0; k--) { if (content[k].type === 'tool_use' && content[k].name === 'code_execution') { paired = content[k]; break } }
+          content.push({ type: 'tool_result', tool_use_id: paired?.id || 'exec-' + normalized.length, content: part.codeExecutionResult.output || '', is_error: part.codeExecutionResult.outcome === 'ERROR' })
         }
       }
     }

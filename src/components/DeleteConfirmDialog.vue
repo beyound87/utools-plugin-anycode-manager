@@ -36,7 +36,7 @@ const emit = defineEmits(['confirm', 'cancel'])
 }
 .dialog-card {
   background: #fff;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 24px;
   width: 380px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.2);
@@ -51,7 +51,7 @@ const emit = defineEmits(['confirm', 'cancel'])
   font-weight: 600;
 }
 .dialog-desc {
-  margin: 0 0 16px;
+  margin: 0 0 12px;
   font-size: 13px;
   opacity: 0.6;
 }
@@ -59,7 +59,7 @@ const emit = defineEmits(['confirm', 'cancel'])
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 .dialog-btn {
   padding: 6px 18px;
@@ -72,8 +72,14 @@ const emit = defineEmits(['confirm', 'cancel'])
   background: rgba(0,0,0,0.06);
   color: inherit;
 }
+.dialog-btn.cancel:hover {
+  background: rgba(0,0,0,0.12);
+}
 :global(.dark .dialog-btn.cancel) {
   background: rgba(255,255,255,0.1);
+}
+:global(.dark .dialog-btn.cancel:hover) {
+  background: rgba(255,255,255,0.15);
 }
 .dialog-btn.danger {
   background: #d32f2f;

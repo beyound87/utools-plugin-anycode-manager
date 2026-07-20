@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, nextTick, watch, computed } from 'vue'
+import { ref, triggerRef, onMounted, nextTick, watch, computed } from 'vue'
 import { useTheme } from './composables/useTheme'
 import { useSnackbar } from './composables/useSnackbar'
 import { useDisplayMessages } from './composables/useMessageParser'
@@ -42,7 +42,7 @@ function scheduleDeltaFlush() {
   if (deltaFlushTimer) return
   deltaFlushTimer = setTimeout(() => {
     deltaFlushTimer = null
-    sessionContent.value = [...sessionContent.value]
+    triggerRef(sessionContent)
     nextTick(() => sessionViewRef.value?.scrollToEnd())
   }, 100)
 }
@@ -316,15 +316,21 @@ function loadProjectSessionsFor(name) {
     const currentIdx = projects.value.findIndex(p => p.name === name)
     if (currentIdx < 0) return
     const proj = projects.value[currentIdx]
-    const result = window.services.loadProjectSessions(proj.path, proj.provider, proj)
-    const sessions = (result.sessions || []).map(applyOverride)
-    projects.value = projects.value.map((p, i) =>
-      i === currentIdx ? { ...p, sessions, sessionsLoaded: true, sessionsLoading: false } : p
-    )
-    // 更新选中会话名称
-    if (selectedSession.value) {
-      const s = sessions.find(s => s.path === selectedSession.value.path)
-      if (s) selectedSession.value = { ...selectedSession.value, name: s.name }
+    try {
+      const result = window.services.loadProjectSessions(proj.path, proj.provider, proj)
+      const sessions = (result.sessions || []).map(applyOverride)
+      projects.value = projects.value.map((p, i) =>
+        i === currentIdx ? { ...p, sessions, sessionsLoaded: true, sessionsLoading: false } : p
+      )
+      if (selectedSession.value) {
+        const s = sessions.find(s => s.path === selectedSession.value.path)
+        if (s) selectedSession.value = { ...selectedSession.value, name: s.name }
+      }
+    } catch (e) {
+      console.error('loadProjectSessions failed:', name, e)
+      projects.value = projects.value.map((p, i) =>
+        i === currentIdx ? { ...p, sessionsLoading: false } : p
+      )
     }
   }, 0)
 }
@@ -484,6 +490,7 @@ function toggleChat() {
 }
 
 function stopChatSession() {
+  if (deltaFlushTimer) { clearTimeout(deltaFlushTimer); deltaFlushTimer = null }
   window.services.stopChat()
   chatActive.value = false
   chatSending.value = false
@@ -497,6 +504,19 @@ function stopChatSession() {
       loadProjects()
     })
   }
+}
+
+// Claude 切模型/模式/effort 时重启进程（session 通过 --resume 续上，不丢上下文）
+function restartChatProcess() {
+  if (!chatActive.value || chatSending.value) return
+  const s = selectedSession.value
+  if (!s || s.provider !== 'claude') return
+  window.services.stopChat()
+  window.services.startChat({
+    provider: s.provider, sessionId: s.sessionId, cwd: s.cwd || '',
+    command: terminalCommand.value || undefined,
+    permissionMode: chatPermMode.value, model: chatModel.value || undefined, effort: chatEffort.value || undefined
+  }, onChatEvent)
 }
 
 function sendChat(msg) {
@@ -530,7 +550,7 @@ function sendChat(msg) {
     command: terminalCommand.value || undefined, model: chatModel.value || undefined,
     effort: chatEffort.value || undefined,
     sandbox: chatPermMode.value === 'bypassPermissions' ? 'full' : undefined,
-    approvalMode: chatPermMode.value === 'plan' ? 'plan' : chatPermMode.value === 'bypassPermissions' ? 'yolo' : 'default'
+    approvalMode: chatPermMode.value === 'bypassPermissions' ? 'yolo' : 'auto'
   })
   if (!result.success) { showSnackbar('发送失败: ' + result.error, 'error'); chatSending.value = false }
 }
@@ -591,13 +611,13 @@ function onChatEvent(ev) {
           sessionId: ev.session_id, cwd: selectedSession.value?.cwd,
           timestamp: new Date().toISOString(), uuid: 'chat-live-' + Date.now()
         }
-        sessionContent.value = [...sessionContent.value, chatLiveItem]
+        sessionContent.value.push(chatLiveItem)
       }
       chatLiveItem.message.content.push({
         type: 'tool_use', name: se.content_block.name || '',
         id: se.content_block.id || '', input: {}
       })
-      sessionContent.value = [...sessionContent.value]
+      triggerRef(sessionContent)
     }
   } else if (ev.type === 'user' && ev.message?.content?.some(b => b.type === 'tool_result')) {
     // 工具执行结果（CLI 自动执行后回传）
@@ -631,6 +651,8 @@ function startNewChat() {
   const cwd = chatCwd.value || ''
   stopChatSession()
   sessionContent.value = []
+  // 清掉旧 sessionId，防止 Codex/OpenCode sendChat 时用 --resume 恢复旧会话
+  if (selectedSession.value) selectedSession.value = { ...selectedSession.value, sessionId: undefined }
   chatActive.value = true
   chatWatchSuspended = true
   window.services.unwatchSessionFile()
@@ -641,14 +663,7 @@ function startNewChat() {
   if (!result.success) { showSnackbar('新建会话失败: ' + result.error, 'error'); stopChatSession() }
 }
 
-function changeChatCwd(newCwd) {
-  if (selectedSession.value) selectedSession.value = { ...selectedSession.value, cwd: newCwd }
-  if (chatActive.value) {
-    // 重启对话进程在新目录
-    stopChatSession()
-    toggleChat()
-  }
-}
+
 
 function refresh() {
   loadProjects(true)
@@ -815,6 +830,15 @@ async function newSessionForProject(project) {
   }
 }
 
+async function newSessionWithDir({ cwd, providerId }) {
+  try {
+    await window.services.newSession(cwd, terminalCommand.value, terminalApp.value, providerId)
+    showSnackbar('已在终端中打开')
+  } catch (e) {
+    showSnackbar('打开终端失败：' + (e.message || e), 'error')
+  }
+}
+
 // Resume
 async function resumeSession(session) {
   const s = session || selectedSession.value
@@ -975,6 +999,7 @@ onMounted(() => {
       @delete-project-sessions="handleDeleteProjectSessions"
       @open-project-dir="openProjectDir"
       @new-session="newSessionForProject"
+      @new-session-with-dir="newSessionWithDir"
       @select-memory="selectMemory"
       @refresh="refresh"
       @open-settings="showSettings = true"
@@ -1028,17 +1053,16 @@ onMounted(() => {
         :sending="chatSending"
         :perm-mode="chatPermMode"
         :provider="selectedSession.provider"
-        :cwd="chatCwd"
         :model="chatModel"
         :effort="chatEffort"
         @toggle-chat="toggleChat"
         @stop-chat="stopChatSession"
         @send="sendChat"
-        @update:perm-mode="setChatPermMode"
-        @update:model="chatModel = $event"
-        @update:effort="chatEffort = $event"
+        @update:perm-mode="setChatPermMode($event); restartChatProcess()"
+        @update:model="chatModel = $event; restartChatProcess()"
+        @update:effort="chatEffort = $event; restartChatProcess()"
         @new-chat="startNewChat"
-        @change-cwd="changeChatCwd"
+
       />
     </main>
 
@@ -1098,7 +1122,6 @@ onMounted(() => {
     <ImagePreview
       :show="imagePreview.show"
       :src="imagePreview.src"
-      :media-type="imagePreview.mediaType"
       @close="imagePreview.show = false"
     />
 
@@ -1122,7 +1145,7 @@ onMounted(() => {
   display: flex;
   height: 100vh;
   font-family: system-ui, -apple-system, sans-serif;
-  background: #f5f5f5;
+  background: #f2f3f5;
   color: #333;
   position: relative;
   overflow: hidden;

@@ -37,13 +37,18 @@ function displayRoleLabel(role) {
   return getRoleLabel(role)
 }
 
-// 复制/显示只给恢复命令本身；cd 进目录由「在终端中恢复」按钮处理（launchInTerminal）
+// 完整可复制的恢复命令：包含 cd 到工作目录（Windows 含盘符切换）
 function buildResumeCommand(s) {
   if (!s?.sessionId) return s?.cwd || ''
   const provider = s.provider ? window.services.getProvider(s.provider) : null
-  return provider?.getResumeCommand
+  const cmd = provider?.getResumeCommand
     ? provider.getResumeCommand(s.sessionId, undefined, s.path)
     : `${window.utools.dbStorage.getItem('terminalCommand') || 'claude'} --resume ${s.sessionId}`
+  const cwd = s.cwd
+  if (!cwd) return cmd
+  const driveMatch = cwd.match(/^([A-Za-z]):/)
+  if (driveMatch) return `${driveMatch[1]}: && cd "${cwd}" && ${cmd}`
+  return `cd "${cwd}" && ${cmd}`
 }
 
 const resumeCommandText = computed(() => buildResumeCommand(props.session))
@@ -66,6 +71,8 @@ watch(() => props.displayMessages, () => {
     searchText.value = props.pendingSearch
     openSearch()
     nextTick(() => nextTick(() => doSearch()))
+  } else if (searchVisible.value && searchText.value) {
+    nextTick(() => doSearch())
   }
 }, { flush: 'post' })
 
@@ -100,7 +107,7 @@ const visibleMessages = computed(() => {
 })
 
 const hasMoreMessages = computed(() => {
-  if (searchVisible.value && searchText.value) return false
+  if (searchVisible.value) return false
   return visibleCount.value < (props.displayMessages?.length || 0)
 })
 
@@ -260,7 +267,7 @@ const isCompressedOnlySession = computed(() =>
   props.displayMessages?.length === 1 && props.displayMessages[0].isCompactSummary
 )
 
-function getOutlineItems() {
+const outlineItems = computed(() => {
   if (!props.displayMessages) return []
   const items = []
   let userIndex = 0
@@ -274,7 +281,7 @@ function getOutlineItems() {
     }
   }
   return items
-}
+})
 
 function scrollToMessage(uuid) {
   const el = contentBodyRef.value?.querySelector(`[data-uuid="${uuid}"]`)
@@ -421,6 +428,7 @@ async function prepareExportClone(session, opts) {
 
   // Build offscreen container
   const container = document.createElement('div')
+  container.className = 'export-clone-container'
   container.style.cssText = 'position:fixed;left:-9999px;top:0;width:860px;z-index:-1;overflow:visible;'
   if (isDark.value) container.classList.add('dark')
   container.style.background = isDark.value ? '#1a1a1a' : '#f8f9fa'
@@ -475,6 +483,9 @@ function doExportWithOptions(opts) {
       } catch (e) {
         console.error('Export HTML failed:', e)
         showSnackbar('导出 HTML 失败: ' + e.message, 'error')
+      } finally {
+        const leftover = document.querySelector('.export-clone-container')
+        if (leftover) document.body.removeChild(leftover)
       }
     })
   } else if (format === 'image') {
@@ -515,6 +526,9 @@ function doExportWithOptions(opts) {
       } catch (e) {
         console.error('Export image failed:', e)
         showSnackbar('导出长图失败: ' + e.message, 'error')
+      } finally {
+        const leftover = document.querySelector('.export-clone-container')
+        if (leftover) document.body.removeChild(leftover)
       }
     })
   }
@@ -551,11 +565,13 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
       </div>
       <div class="content-header-sub">
         <span class="content-cwd">{{ session.isSubagent ? session.agentId : resumeCommandText }}</span>
-        <button v-if="session.sessionId && !session.isSubagent" class="resume-btn" @click="emit('resume')" title="在终端中恢复会话">
-          <IconTerminal />
+        <button v-if="session.sessionId && !session.isSubagent" class="action-pill action-pill-primary" @click="emit('resume')" title="在终端中恢复会话">
+          <IconTerminal :size="12" />
+          <span>恢复</span>
         </button>
-        <button v-if="session.sessionId && !session.isSubagent" class="resume-btn" @click="copyResumeCommand" title="复制恢复命令">
-          <IconCopy :size="13" />
+        <button v-if="session.sessionId && !session.isSubagent" class="action-pill" @click="copyResumeCommand" title="复制恢复命令">
+          <IconCopy :size="12" />
+          <span>复制命令</span>
         </button>
         <div style="flex:1"></div>
         <button class="header-action-btn" @click="allMode === 'expand' ? collapseAll() : expandAll()" :title="allMode === 'expand' ? '折叠全部工具调用' : '展开全部工具调用'">
@@ -828,6 +844,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
                   <img
                     :src="'data:' + (block.source.media_type || 'image/png') + ';base64,' + block.source.data"
                     class="inline-image"
+                    alt="图片"
                     @click="$emit('preview-image', 'data:' + (block.source.media_type || 'image/png') + ';base64,' + block.source.data, block.source.media_type || 'image/png')"
                   />
                 </template>
@@ -885,7 +902,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
       <div class="outline-header">消息大纲</div>
       <div class="outline-list">
         <div
-          v-for="it in getOutlineItems()"
+          v-for="it in outlineItems"
           :key="it.uuid"
           class="outline-item"
           :class="{ 'outline-item-summary': it.isCompactSummary }"
@@ -899,7 +916,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
             <span class="outline-text">{{ it.text }}</span>
           </template>
         </div>
-        <div v-if="getOutlineItems().length === 0" class="outline-empty">无用户消息</div>
+        <div v-if="outlineItems.length === 0" class="outline-empty">无用户消息</div>
       </div>
     </div>
     <!-- 滚动按钮 -->
@@ -1031,11 +1048,13 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
 .content-header {
   padding: 10px 16px 8px;
   border-bottom: 1px solid #e8e8e8;
-  background: #fafafa;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 :global(.dark .content-header) {
   background: #1a1a1a;
   border-color: #2a2a2a;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 .content-header-top {
   display: flex;
@@ -1044,7 +1063,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
 }
 .content-header h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1.4;
 }
@@ -1055,11 +1074,35 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   gap: 2px;
 }
 .content-cwd {
-  font-size: 11px;
-  opacity: 0.45;
+  font-size: 12px;
+  opacity: 0.6;
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   user-select: all;
+  background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.06);
+  padding: 4px 10px;
+  border-radius: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0; max-width: clamp(140px, 40%, 360px);
 }
+:global(.dark .content-cwd) {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.08);
+}
+.action-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border: 1px solid rgba(0,0,0,0.12); border-radius: 14px;
+  background: #fff; color: #555; font-size: 11px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.action-pill:hover { background: rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.2); }
+.action-pill-primary { background: linear-gradient(135deg, #1976d2, #42a5f5); color: #fff; border: none; box-shadow: 0 1px 4px rgba(25,118,210,0.25); }
+.action-pill-primary:hover { box-shadow: 0 2px 8px rgba(25,118,210,0.35); transform: translateY(-1px); }
+:global(.dark) .action-pill { background: #2a2d32; border-color: rgba(255,255,255,0.12); color: #aaa; }
+:global(.dark) .action-pill:hover { background: #35383d; border-color: rgba(255,255,255,0.2); }
+:global(.dark) .action-pill-primary { background: linear-gradient(135deg, #42a5f5, #1e88e5); }
+:global(.dark) .action-pill-primary:hover { background: linear-gradient(135deg, #5ab5f8, #2193f0); }
+
 .resume-btn {
   display: inline-flex;
   align-items: center;
@@ -1090,18 +1133,18 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   width: 24px;
   height: 24px;
   border: none;
-  background: none;
-  border-radius: 4px;
+  background: rgba(0,0,0,0.04);
+  border-radius: 6px;
   cursor: pointer;
   color: inherit;
   opacity: 0.4;
 }
 .header-action-btn:hover {
-  opacity: 1;
-  background: rgba(0,0,0,0.06);
+  background: rgba(0,0,0,0.1);
+  opacity: 0.8;
 }
 :global(.dark .header-action-btn:hover) {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.12);
 }
 .more-wrapper {
   position: relative;
@@ -1413,17 +1456,17 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
 }
 
 .message {
-  margin-bottom: 12px;
-  padding: 12px;
+  margin-bottom: 15px;
+  padding: 14px 16px;
   border-radius: 8px;
   position: relative;
 }
 .message-user {
   background: rgba(25, 118, 210, 0.06);
-  border-left: 3px solid rgba(25, 118, 210, 0.4);
+  border-left: 4px solid rgba(25, 118, 210, 0.4);
 }
 .message-assistant {
-  background: transparent;
+  background: rgba(0,0,0,0.015);
 }
 .message-system {
   background: rgba(0, 0, 0, 0.04);
@@ -1438,7 +1481,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   border-left-color: rgba(144, 202, 249, 0.3);
 }
 :global(.dark .message-assistant) {
-  background: transparent;
+  background: rgba(255,255,255,0.02);
 }
 :global(.dark .message-system) {
   background: rgba(255, 255, 255, 0.05);
@@ -1537,12 +1580,13 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
 .role-badge {
   font-size: 11px;
   padding: 2px 10px;
-  border-radius: 4px;
+  border-radius: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 .role-user {
-  background: #1976d2;
+  background: linear-gradient(135deg, #1976d2, #1565c0);
   color: #fff;
 }
 .role-assistant {
@@ -1665,6 +1709,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   font-size: 11px;
   opacity: 0.5;
   flex-shrink: 0;
+  transition: transform 0.15s;
 }
 .block-tag {
   font-size: 11px;
@@ -1699,11 +1744,21 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
 :global(.dark .block-body) {
   background: rgba(255,255,255,0.05);
 }
+.block-thinking {
+  border-left: 2px dashed rgba(156,39,176,0.3);
+  background: rgba(156,39,176,0.03);
+  border-radius: 0 6px 6px 0;
+  padding: 2px 0 2px 6px;
+}
+:global(.dark .block-thinking) {
+  border-left-color: rgba(206,147,216,0.3);
+  background: rgba(156,39,176,0.06);
+}
 
 .tool-card {
-  border-left: 2px solid rgba(0,0,0,0.12);
-  border-radius: 0 6px 6px 0;
-  background: rgba(0, 0, 0, 0.02);
+  border-left: 2px solid rgba(0,0,0,0.08);
+  border-radius: 0 10px 10px 0;
+  background: rgba(0,0,0,0.025);
   overflow: hidden;
 }
 .tool-card.tool-error {
@@ -1711,7 +1766,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   background: rgba(211, 47, 47, 0.03);
 }
 :global(.dark .tool-card) {
-  border-left-color: rgba(255,255,255,0.12);
+  border-left-color: rgba(255,255,255,0.08);
   background: rgba(255, 255, 255, 0.03);
 }
 :global(.dark .tool-card.tool-error) {
@@ -1722,7 +1777,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 10px;
+  padding: 7px 10px;
   cursor: pointer;
   user-select: none;
 }
@@ -1781,6 +1836,20 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   margin: 0;
   max-height: 400px;
   overflow: auto;
+}
+:global(.code-block-wrapper) {
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 6px;
+  overflow: hidden;
+}
+:global(.code-block-header) {
+  background: rgba(0,0,0,0.03);
+}
+:global(.dark .code-block-wrapper) {
+  border-color: rgba(255,255,255,0.08);
+}
+:global(.dark .code-block-header) {
+  background: rgba(255,255,255,0.04);
 }
 
 /* Diff */
@@ -2008,11 +2077,12 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   justify-content: center;
   height: 100%;
   text-align: center;
-  opacity: 0.5;
+  opacity: 0.4;
 }
 .empty-main p {
-  margin-top: 12px;
-  font-size: 16px;
+  margin-top: 20px;
+  font-size: 15px;
+  font-weight: 400;
 }
 
 .bottom-resume-bar {
@@ -2031,28 +2101,25 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   align-items: center;
   gap: 7px;
   padding: 8px 20px;
-  border: 1px solid rgba(0,0,0,0.12);
+  border: none;
   border-radius: 20px;
-  background: transparent;
-  color: inherit;
+  background: linear-gradient(135deg, #1976d2, #42a5f5);
+  color: #fff;
   font-size: 13px;
   cursor: pointer;
-  opacity: 0.45;
-  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+  box-shadow: 0 2px 8px rgba(25,118,210,0.25);
+  transition: opacity 0.15s, box-shadow 0.15s;
 }
 .bottom-resume-btn:hover {
-  opacity: 1;
-  border-color: #6366f1;
-  color: #6366f1;
-  background: rgba(99, 102, 241, 0.06);
+  opacity: 0.9;
+  box-shadow: 0 4px 12px rgba(25,118,210,0.35);
 }
 :global(.dark .bottom-resume-btn) {
-  border-color: rgba(255,255,255,0.15);
+  background: linear-gradient(135deg, #42a5f5, #1e88e5);
 }
 :global(.dark .bottom-resume-btn:hover) {
-  border-color: #818cf8;
-  color: #a5b4fc;
-  background: rgba(99, 102, 241, 0.12);
+  opacity: 0.9;
+  box-shadow: 0 4px 12px rgba(66,165,245,0.35);
 }
 
 .compressed-only-hint {

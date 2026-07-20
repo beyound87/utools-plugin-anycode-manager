@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
   show: Boolean,
@@ -8,16 +8,22 @@ const props = defineProps({
 
 const emit = defineEmits(['confirm', 'cancel'])
 const name = ref('')
+const inputRef = ref(null)
 
 watch(() => props.show, (v) => {
   if (v) {
     name.value = ''
     nextTick(() => {
-      const input = document.querySelector('.fork-name-input')
-      if (input) input.focus()
+      if (inputRef.value) inputRef.value.focus()
     })
   }
 })
+
+function onKeydown(e) {
+  if (e.key === 'Escape' && props.show) emit('cancel')
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 function confirm() {
   if (!name.value.trim()) return
@@ -32,6 +38,7 @@ function confirm() {
         <h3 class="dialog-title">Fork 会话</h3>
         <p class="dialog-desc">{{ desc }}</p>
         <input
+          ref="inputRef"
           class="fork-name-input"
           v-model="name"
           placeholder="输入新会话名称..."
@@ -59,7 +66,7 @@ function confirm() {
 }
 .dialog-card {
   background: #fff;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 24px;
   width: 380px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.2);
@@ -88,6 +95,7 @@ function confirm() {
   background: inherit;
   color: inherit;
   box-sizing: border-box;
+  font-family: inherit;
 }
 .fork-name-input:focus {
   border-color: #1976d2;
@@ -115,12 +123,24 @@ function confirm() {
   background: rgba(0,0,0,0.06);
   color: inherit;
 }
+.dialog-btn.cancel:hover {
+  background: rgba(0,0,0,0.12);
+}
 :global(.dark .dialog-btn.cancel) {
   background: rgba(255,255,255,0.1);
+}
+:global(.dark .dialog-btn.cancel:hover) {
+  background: rgba(255,255,255,0.15);
 }
 .dialog-btn.confirm {
   background: #1976d2;
   color: #fff;
+}
+.dialog-btn.confirm:hover:not(:disabled) {
+  background: #1565c0;
+}
+:global(.dark .dialog-btn.confirm:hover:not(:disabled)) {
+  background: #1565c0;
 }
 .dialog-btn.confirm:disabled {
   opacity: 0.4;

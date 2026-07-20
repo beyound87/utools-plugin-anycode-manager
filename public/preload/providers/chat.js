@@ -237,6 +237,9 @@ function listModels(providerId, callback) {
       if (mm) fallbackModels.push(mm[1])
     } else if (providerId === 'gemini') {
       fallbackModels.push('gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash')
+    } else if (providerId === 'opencode') {
+      // OpenCode 配置在 DB 中，读 fallback 常见模型
+      fallbackModels.push('claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'gpt-4.1', 'o3', 'gemini-2.5-pro')
     }
   } catch (e) {}
 

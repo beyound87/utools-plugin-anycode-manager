@@ -92,17 +92,19 @@ function launchInTerminal(cmd, cwd, terminalApp) {
     // /k 保持窗口打开：claude 退出后 shell 仍在，出错也能看到信息
     return spawnDetached(`start "" /d "${workDir}" cmd /k "${cmd}"`, { cwd: workDir })
   } else if (platform === 'darwin') {
-    const escaped = cmd.replace(/"/g, '\\"')
-    const escapedDir = workDir.replace(/"/g, '\\"')
-    return spawnDetached(`osascript -e 'tell app "Terminal" to do script "cd ${escapedDir} && ${escaped}"'`)
+    // ponytail: 双引号包裹 osascript 参数，避免路径含单引号时断裂
+    const escSh = s => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "'\\''")
+    return spawnDetached(`osascript -e "tell app \\"Terminal\\" to do script \\"cd '${escSh(workDir)}' && ${escSh(cmd)}\\"" `)
   } else {
+    // ponytail: 用 bash -c "..." 双引号包裹，避免路径含单引号时断裂
+    const escBash = s => s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`').replace(/'/g, "'\\''")
     const terminals = ['x-terminal-emulator', 'gnome-terminal', 'konsole', 'xfce4-terminal', 'xterm']
     const tryNext = (i) => {
       if (i >= terminals.length) return Promise.reject(new Error('未找到可用终端'))
       const term = terminals[i]
       const termCmd = term === 'gnome-terminal'
-        ? `${term} -- bash -c 'cd "${workDir}" && ${cmd}; exec bash'`
-        : `${term} -e 'bash -c "cd \\"${workDir}\\" && ${cmd}; exec bash"'`
+        ? `${term} -- bash -c "cd '${escBash(workDir)}' && ${escBash(cmd)}; exec bash"`
+        : `${term} -e bash -c "cd '${escBash(workDir)}' && ${escBash(cmd)}; exec bash"`
       return spawnDetached(termCmd).catch(() => tryNext(i + 1))
     }
     return tryNext(0)

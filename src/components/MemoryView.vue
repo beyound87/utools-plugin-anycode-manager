@@ -3,7 +3,7 @@ import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted } from
 import { useSnackbar } from '../composables/useSnackbar'
 import { sideBySideDiff } from '../composables/useDiff'
 import { renderMarkdown } from '../composables/useMarkdown'
-import { IconMemory, IconDelete, IconCopy, IconChevronUp, IconSettings } from './icons'
+import { IconMemory, IconDelete, IconCopy, IconChevronUp } from './icons'
 
 function escHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

@@ -7,19 +7,16 @@ const props = defineProps({
   sending: Boolean,
   permMode: { type: String, default: 'plan' },
   provider: { type: String, default: 'claude' },
-  cwd: { type: String, default: '' },
   model: { type: String, default: '' },
   effort: { type: String, default: '' }
 })
-const emit = defineEmits(['send', 'toggle-chat', 'update:permMode', 'stop-chat', 'new-chat', 'change-cwd', 'update:model', 'update:effort'])
+const emit = defineEmits(['send', 'toggle-chat', 'update:permMode', 'stop-chat', 'new-chat', 'update:model', 'update:effort'])
 
 const text = ref('')
 const images = ref([])
 const attachments = ref([])
 const modelOpen = ref(false)
 const textareaRef = ref(null)
-const showToolbar = ref(true)
-
 const PERM_MODES = [
   { value: 'plan', label: '只读', icon: '🔒', desc: 'AI 不改文件不跑命令' },
   { value: 'acceptEdits', label: '编辑', icon: '✏️', desc: '允许 AI 编辑文件' },
@@ -36,18 +33,15 @@ const EFFORTS = [
 
 const hasEffort = computed(() => ['claude', 'codex', 'opencode'].includes(props.provider))
 const modelList = ref([])
+let modelReqId = 0
 watch(() => props.provider, (p) => {
+  modelList.value = []
   if (p && window.services?.listModels) {
-    window.services.listModels(p, (list) => { modelList.value = list || [] })
+    const reqId = ++modelReqId
+    window.services.listModels(p, (list) => { if (reqId === modelReqId) modelList.value = list || [] })
   }
 }, { immediate: true })
 
-const shortCwd = computed(() => {
-  const c = props.cwd || ''
-  if (!c) return ''
-  const parts = c.replace(/\\/g, '/').split('/')
-  return parts.length > 2 ? '.../' + parts.slice(-2).join('/') : c
-})
 
 function send() {
   const t = text.value.trim()
@@ -91,13 +85,6 @@ function addAttachments() {
   } catch (e) {}
 }
 
-function changeCwd() {
-  try {
-    const dirs = window.utools.showOpenDialog({ title: '选择工作目录', properties: ['openDirectory'] })
-    if (dirs?.[0]) emit('change-cwd', dirs[0])
-  } catch (e) {}
-}
-
 const canSend = computed(() => !props.sending && (text.value.trim() || images.value.length > 0))
 function closeDropdowns(e) { if (!e.target.closest('.model-wrapper')) modelOpen.value = false }
 onMounted(() => document.addEventListener('click', closeDropdowns))
@@ -118,15 +105,16 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
   <div v-else class="composer">
     <!-- 顶部工具栏：紧凑一行 -->
     <div class="toolbar">
-      <!-- 权限模式 pills -->
-      <div class="mode-pills">
-        <button v-for="m in PERM_MODES" :key="m.value"
-          class="mode-pill" :class="{ active: permMode === m.value, danger: m.value === 'bypassPermissions' && permMode === m.value }"
-          @click="emit('update:permMode', m.value)" :title="m.desc"
-        >{{ m.label }}</button>
-      </div>
-
-      <span class="toolbar-sep"></span>
+      <!-- 权限模式 pills（仅 Claude/Codex/Gemini 支持，OpenCode 无此概念） -->
+      <template v-if="provider !== 'opencode'">
+        <div class="mode-pills">
+          <button v-for="m in PERM_MODES" :key="m.value"
+            class="mode-pill" :class="{ active: permMode === m.value, danger: m.value === 'bypassPermissions' && permMode === m.value }"
+            @click="emit('update:permMode', m.value)" :title="m.desc"
+          >{{ m.label }}</button>
+        </div>
+        <span class="toolbar-sep"></span>
+      </template>
 
       <!-- 模型 -->
       <div class="model-wrapper" :class="{ open: modelOpen }">
@@ -149,12 +137,6 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
       </div>
 
       <div style="flex:1"></div>
-
-      <!-- cwd -->
-      <span v-if="cwd" class="cwd-chip" :title="cwd" @click="changeCwd">
-        <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
-        {{ shortCwd }}
-      </span>
 
       <!-- 操作按钮 -->
       <button class="toolbar-btn" @click="emit('new-chat')" title="新建对话">
@@ -234,7 +216,8 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
 
 /* ========== 工具栏 ========== */
 .toolbar {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 34px; row-gap: 6px;
+  display: flex; align-items: center; gap: 6px; min-height: 34px;
+  flex-wrap: wrap; row-gap: 4px;
 }
 .toolbar-sep { width: 1px; height: 18px; background: #d5d8dc; flex-shrink: 0; margin: 0 4px; }
 :global(.dark) .toolbar-sep { background: #3a3d42; }
@@ -245,7 +228,7 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
 }
 :global(.dark) .mode-pills, :global(.dark) .effort-pills { background: #2a2d32; }
 .mode-pill, .effort-pill {
-  padding: 5px 14px; border: none; background: transparent; border-radius: 6px;
+  padding: 4px 10px; border: none; background: transparent; border-radius: 6px;
   font-size: 12px; cursor: pointer; color: #5f6368; white-space: nowrap;
   transition: all 0.15s; font-weight: 500;
 }
@@ -296,17 +279,6 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
 }
 .model-custom::placeholder { color: #9aa0a6; }
 :global(.dark) .model-custom { border-color: #3a3d42; }
-
-/* cwd */
-.cwd-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: 11px; color: #5f6368; cursor: pointer; padding: 4px 8px; border-radius: 6px;
-  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 0;
-  background: rgba(0,0,0,0.04); transition: all 0.15s;
-}
-.cwd-chip:hover { background: rgba(0,0,0,0.08); color: #333; }
-:global(.dark) .cwd-chip { color: #9aa0a6; background: rgba(255,255,255,0.06); }
-:global(.dark) .cwd-chip:hover { background: rgba(255,255,255,0.1); color: #e0e0e0; }
 
 /* 工具栏按钮 */
 .toolbar-btn {

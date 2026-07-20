@@ -146,8 +146,9 @@ function deleteProjectSessions(projectPath, providerId) {
 function batchDeleteSessions(filePaths) {
   let deleted = 0, errors = []
   for (const fp of filePaths) {
-    // ponytail: 根据路径特征推断 provider
-    const providerId = fp.startsWith('ses_') ? 'opencode' : undefined
+    // ponytail: OpenCode 的 session path 是 UUID（非文件路径），无路径分隔符和扩展名
+    const isFilePath = fp.includes('/') || fp.includes('\\') || fp.includes('.')
+    const providerId = isFilePath ? undefined : 'opencode'
     try {
       const result = deleteSession(fp, providerId)
       if (result.success) deleted++

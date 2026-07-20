@@ -61,7 +61,7 @@ function fmtNum(n) {
 
 <template>
   <Transition name="drawer">
-    <div v-if="show" class="drawer-overlay" @click.self="emit('close')">
+    <div v-if="show" class="drawer-overlay" @click.self="emit('close')" @keydown.escape="emit('close')" tabindex="-1">
       <div class="stats-panel">
         <div class="drawer-header">
           <h3>统计洞察</h3>
@@ -171,6 +171,7 @@ function fmtNum(n) {
 .stat-refresh { padding: 5px 14px; border: 1px solid #ddd; border-radius: 6px; background: none; color: inherit; font-size: 12px; cursor: pointer; }
 .stat-refresh:hover { background: rgba(0,0,0,0.04); }
 :global(.dark) .stat-refresh { border-color: #444; }
+:global(.dark) .stat-refresh:hover { background: rgba(255,255,255,0.08); }
 
 .stat-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
 .stat-card { background: rgba(0,0,0,0.03); border-radius: 10px; padding: 14px; text-align: center; }
@@ -196,7 +197,7 @@ function fmtNum(n) {
 .activity-bar.zero { background: rgba(0,0,0,0.1); }
 :global(.dark) .activity-bar { background: #90caf9; }
 :global(.dark) .activity-bar.zero { background: rgba(255,255,255,0.1); }
-.activity-label { font-size: 8px; opacity: 0.45; white-space: nowrap; }
+.activity-label { font-size: 10px; opacity: 0.45; white-space: nowrap; }
 
 .token-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
 .token-item { background: rgba(0,0,0,0.03); border-radius: 8px; padding: 8px; text-align: center; }

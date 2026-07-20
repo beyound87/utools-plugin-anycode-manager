@@ -37,7 +37,8 @@ export function shortenPath(p) {
   const sep = p.includes('/') ? '/' : '\\'
   const parts = p.split(sep).filter(Boolean)
   if (parts.length <= 3) return p
-  return parts[0] + sep + '...' + sep + parts.slice(-2).join(sep)
+  const prefix = p.startsWith(sep) ? sep : ''
+  return prefix + parts[0] + sep + '...' + sep + parts.slice(-2).join(sep)
 }
 
 export function shortenFilePath(p) {

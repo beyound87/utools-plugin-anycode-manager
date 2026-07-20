@@ -5,7 +5,12 @@ const PROVIDER_NAME = 'OpenCode'
 
 function getRoot() {
   if (process.platform === 'win32') {
-    return path.join(os.homedir(), '.local', 'share', 'opencode')
+    // Windows: 按 db 文件实际位置判断，找不到则退回 Unix-style 兼容路径
+    const winCandidates = [
+      process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'opencode'),
+      process.env.APPDATA && path.join(process.env.APPDATA, 'opencode'),
+    ].filter(Boolean)
+    for (const p of winCandidates) { if (fs.existsSync(path.join(p, 'opencode.db'))) return p }
   }
   return path.join(os.homedir(), '.local', 'share', 'opencode')
 }
@@ -110,22 +115,27 @@ function loadProjectSessions(projectPath, _project) {
       }
     }))
 
-    // 查子代理
-    for (const session of sessions) {
-      const subs = db.prepare(`
-        SELECT id, title, slug, time_updated, model, agent
-        FROM session WHERE parent_id = ? ORDER BY time_updated DESC
-      `).all(session.sessionId)
-      session.subagents = subs.map(sub => ({
-        agentId: sub.id,
-        name: sub.title || sub.agent || sub.slug || sub.id,
-        path: sub.id,
-        size: 0,
-        modifiedTime: new Date(sub.time_updated),
-        isSubagent: true,
-        parentSessionPath: session.sessionId,
-        provider: PROVIDER_ID
-      }))
+    // 批量查子代理（避免 N+1）
+    const sessionIds = sessions.map(s => s.sessionId)
+    if (sessionIds.length) {
+      const placeholders = sessionIds.map(() => '?').join(',')
+      const allSubs = db.prepare(`
+        SELECT id, title, slug, time_updated, model, agent, parent_id
+        FROM session WHERE parent_id IN (${placeholders}) ORDER BY time_updated DESC
+      `).all(...sessionIds)
+      const subsByParent = {}
+      for (const sub of allSubs) {
+        if (!subsByParent[sub.parent_id]) subsByParent[sub.parent_id] = []
+        subsByParent[sub.parent_id].push({
+          agentId: sub.id,
+          name: sub.title || sub.agent || sub.slug || sub.id,
+          path: sub.id, size: 0,
+          modifiedTime: new Date(sub.time_updated),
+          isSubagent: true, parentSessionPath: sub.parent_id,
+          provider: PROVIDER_ID
+        })
+      }
+      for (const session of sessions) session.subagents = subsByParent[session.sessionId] || []
     }
 
     return { success: true, sessions }
@@ -142,28 +152,31 @@ function readSessionFile(sessionIdOrPath) {
   if (!db) return []
   try {
     const sessionId = sessionIdOrPath
-    // 读取 messages
-    const messages = db.prepare(`
-      SELECT id, data, time_created, time_updated
-      FROM message WHERE session_id = ?
-      ORDER BY time_created ASC
+    // JOIN 一次查出 messages + parts（避免 N+1）
+    const rows = db.prepare(`
+      SELECT m.id as msg_id, m.data as msg_data, m.time_created as msg_time,
+        p.id as part_id, p.data as part_data, p.time_created as part_time
+      FROM message m LEFT JOIN part p ON p.message_id = m.id
+      WHERE m.session_id = ?
+      ORDER BY m.time_created ASC, p.time_created ASC
     `).all(sessionId)
 
+    // 按 message 分组
+    const msgMap = new Map()
+    for (const row of rows) {
+      if (!msgMap.has(row.msg_id)) msgMap.set(row.msg_id, { data: row.msg_data, time: row.msg_time, parts: [] })
+      if (row.part_id) msgMap.get(row.msg_id).parts.push({ id: row.part_id, data: row.part_data })
+    }
+
     const normalized = []
-    for (const msg of messages) {
+    for (const [msgId, msg] of msgMap) {
       let msgData
       try { msgData = JSON.parse(msg.data) } catch (e) { continue }
 
       const role = msgData.role === 'assistant' ? 'assistant' : 'user'
       const content = []
 
-      // 读取该消息的 parts
-      const parts = db.prepare(`
-        SELECT id, data, time_created FROM part
-        WHERE message_id = ? ORDER BY time_created ASC
-      `).all(msg.id)
-
-      for (const part of parts) {
+      for (const part of msg.parts) {
         let partData
         try { partData = JSON.parse(part.data) } catch (e) { continue }
 
@@ -205,8 +218,8 @@ function readSessionFile(sessionIdOrPath) {
           message: { role, content },
           sessionId,
           cwd: msgData.path?.cwd || '',
-          timestamp: new Date(msg.time_created).toISOString(),
-          uuid: msg.id,
+          timestamp: new Date(msg.time).toISOString(),
+          uuid: msgId,
           _stats: {
             input_tokens: tokens.input || 0,
             output_tokens: tokens.output || 0,

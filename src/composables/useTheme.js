@@ -10,8 +10,12 @@ const isDark = computed(() => {
   return systemDark.value
 })
 
+let listenerInited = false
+
 export function useTheme() {
   function initThemeListener() {
+    if (listenerInited) return
+    listenerInited = true
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
       systemDark.value = e.matches
     })

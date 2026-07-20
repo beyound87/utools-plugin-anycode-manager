@@ -78,7 +78,7 @@ function save() {
 
 <template>
   <Transition name="drawer">
-    <div v-if="show" class="drawer-overlay">
+    <div v-if="show" class="drawer-overlay" @click.self="emit('close')" @keydown.escape="emit('close')" tabindex="-1">
       <div class="drawer-panel">
         <div class="drawer-header">
           <h3>设置</h3>
@@ -386,4 +386,6 @@ function save() {
   cursor: pointer;
 }
 .setting-save-btn:hover { background: #1565c0; }
+:global(.dark) .setting-save-btn { background: #42a5f5; }
+:global(.dark) .setting-save-btn:hover { background: #1e88e5; }
 </style>

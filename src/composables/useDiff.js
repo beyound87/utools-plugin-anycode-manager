@@ -3,6 +3,7 @@
 // 返回最长公共子序列的匹配对 [{ ai, bi }, ...]
 export function lcs(a, b) {
   const m = a.length, n = b.length
+  if (m * n > 4_000_000) return [] // ponytail: skip O(m*n) LCS; treat all as changed
   const dp = Array.from({ length: m + 1 }, () => new Uint32Array(n + 1))
   for (let i = 1; i <= m; i++)
     for (let j = 1; j <= n; j++)
@@ -19,6 +20,8 @@ export function lcs(a, b) {
 
 // 单行字符级 diff，返回 { oldParts, newParts }，每部分为 [{text, hl}]
 export function inlineDiff(oldLine, newLine) {
+  oldLine = oldLine ?? ''
+  newLine = newLine ?? ''
   if (!oldLine && !newLine) return { oldParts: [{ text: '', hl: false }], newParts: [{ text: '', hl: false }] }
   let pre = 0
   while (pre < oldLine.length && pre < newLine.length && oldLine[pre] === newLine[pre]) pre++

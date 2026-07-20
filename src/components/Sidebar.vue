@@ -37,7 +37,8 @@ const emit = defineEmits([
   'global-search',
   'global-search-active',
   'open-search-result',
-  'open-stats'
+  'open-stats',
+  'new-session-with-dir'
 ])
 
 const { isDark, toggleTheme } = useTheme()
@@ -237,17 +238,28 @@ function menuCopyResumeCmd() {
 const ctrlHeld = ref(false)
 function onKeyDown(e) { if (e.key === 'Control' || e.key === 'Meta') ctrlHeld.value = true }
 function onKeyUp(e) { if (e.key === 'Control' || e.key === 'Meta') ctrlHeld.value = false }
+function onBlur() { ctrlHeld.value = false }
 
 onMounted(() => {
   document.addEventListener('click', closeMenu)
   document.addEventListener('keydown', onKeyDown)
   document.addEventListener('keyup', onKeyUp)
+  window.addEventListener('blur', onBlur)
 })
 onUnmounted(() => {
   document.removeEventListener('click', closeMenu)
   document.removeEventListener('keydown', onKeyDown)
   document.removeEventListener('keyup', onKeyUp)
+  window.removeEventListener('blur', onBlur)
+  clearTimeout(globalDebounce)
 })
+
+function newSessionWithDir() {
+  try {
+    const dirs = window.utools.showOpenDialog({ title: '选择工作目录', properties: ['openDirectory'] })
+    if (dirs?.[0]) emit('new-session-with-dir', { cwd: dirs[0], providerId: providerFilter.value || 'claude' })
+  } catch (e) {}
+}
 
 const providerFilter = ref('')
 const availableProviders = computed(() => window.services?.getAvailableProviders?.() || [])
@@ -301,6 +313,9 @@ const filteredProjects = computed(() => {
     <div class="sidebar-header">
       <h2>会话管理</h2>
       <div class="header-actions">
+        <button class="icon-btn" @click="newSessionWithDir" title="新建会话">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        </button>
         <button class="icon-btn" @click="emit('open-stats')" title="统计洞察">
           <IconChart />
         </button>
@@ -447,8 +462,9 @@ const filteredProjects = computed(() => {
                   <IconCheckbox v-else />
                 </span>
                 <template v-else>
-                  <IconFile class="session-icon session-icon-file" />
-                  <span class="session-icon session-icon-check" @click.stop="toggleSelect(session)"><IconCheckbox /></span>
+                  <span class="session-avatar" :style="{ background: providerColor(session.provider || project.provider) }" @click.stop="toggleSelect(session)">
+                    {{ PROVIDER_SHORT[session.provider || project.provider] || 'CC' }}
+                  </span>
                 </template>
                 <div class="session-info">
                   <span class="session-name">
@@ -606,10 +622,10 @@ const filteredProjects = computed(() => {
   flex-shrink: 0;
 }
 .provider-chip:hover { background: rgba(0,0,0,0.04); }
-.provider-chip.active { border-color: #1976d2; background: rgba(25,118,210,0.08); color: #1976d2; font-weight: 600; }
+.provider-chip.active { border-color: #1976d2; background: rgba(25,118,210,0.08); color: #1976d2; font-weight: 600; box-shadow: 0 1px 4px rgba(25,118,210,0.15); }
 :global(.dark .provider-chip) { border-color: #444; }
 :global(.dark .provider-chip:hover) { background: rgba(255,255,255,0.06); }
-:global(.dark .provider-chip.active) { border-color: #90caf9; background: rgba(144,202,249,0.12); color: #90caf9; }
+:global(.dark .provider-chip.active) { border-color: #90caf9; background: rgba(144,202,249,0.12); color: #90caf9; box-shadow: 0 1px 4px rgba(144,202,249,0.15); }
 .provider-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .provider-badge {
   font-size: 9px;
@@ -648,7 +664,7 @@ const filteredProjects = computed(() => {
   min-width: 320px;
   display: flex;
   flex-direction: column;
-  background: #f8f9fa;
+  background: #f5f6f8;
   border-right: 1px solid #e8e8e8;
   flex-shrink: 0;
   transition: margin-left 0.2s;
@@ -658,7 +674,7 @@ const filteredProjects = computed(() => {
   margin-left: -320px;
 }
 :global(.dark .sidebar) {
-  background: #161616;
+  background: #181a1e;
   border-color: #2a2a2a;
 }
 
@@ -674,7 +690,7 @@ const filteredProjects = computed(() => {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.02em;
 }
 .header-actions {
   display: flex;
@@ -682,10 +698,10 @@ const filteredProjects = computed(() => {
 }
 .sidebar-divider {
   height: 1px;
-  background: #e0e0e0;
+  background: linear-gradient(90deg, transparent, rgba(0,0,0,0.08), transparent);
 }
 :global(.dark .sidebar-divider) {
-  background: #333;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
 }
 
 .search-bar {
@@ -699,13 +715,21 @@ const filteredProjects = computed(() => {
   align-items: center;
   flex: 1;
   margin: 0 0 0 8px;
-  padding: 0 8px;
-  border-radius: 6px;
+  padding: 2px 10px;
+  border-radius: 10px;
   background: rgba(0,0,0,0.04);
-  gap: 6px;
+  gap: 8px;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+.search-box:focus-within {
+  border-color: rgba(25,118,210,0.4);
 }
 :global(.dark .search-box) {
   background: rgba(255,255,255,0.06);
+}
+:global(.dark .search-box:focus-within) {
+  border-color: rgba(144,202,249,0.3);
 }
 .search-icon {
   flex-shrink: 0;
@@ -716,7 +740,7 @@ const filteredProjects = computed(() => {
   border: none;
   background: none;
   outline: none;
-  font-size: 13px;
+  font-size: 13.5px;
   padding: 6px 0;
   color: inherit;
   font-family: inherit;
@@ -799,7 +823,7 @@ const filteredProjects = computed(() => {
   display: flex;
   align-items: center;
   padding: 6px 10px;
-  min-height: 34px;
+  min-height: 38px;
   border-radius: 8px;
   cursor: pointer;
   gap: 6px;
@@ -837,13 +861,13 @@ const filteredProjects = computed(() => {
   white-space: nowrap;
 }
 .session-count {
-  font-size: 12px;
+  font-size: 11px;
   background: rgba(0,0,0,0.08);
-  padding: 0 8px;
+  padding: 0 6px;
   border-radius: 10px;
   flex-shrink: 0;
-  height: 22px;
-  line-height: 22px;
+  height: 20px;
+  line-height: 20px;
   box-sizing: border-box;
 }
 :global(.dark .session-count) {
@@ -877,21 +901,27 @@ const filteredProjects = computed(() => {
   background: rgba(255,255,255,0.1);
 }
 
+.project-group {
+  margin-bottom: 6px; padding-bottom: 6px;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+}
+.project-group:last-child { border-bottom: none; margin-bottom: 0; }
+:global(.dark) .project-group { border-bottom-color: rgba(255,255,255,0.04); }
 .session-list {
   padding-left: 10px;
 }
 /* 展开/收起动画：仅 opacity + transform，GPU 加速不触发 layout */
-.session-expand-enter-active {
+.session-expand-enter-active, .session-expand-leave-active {
   transition: opacity 0.16s ease, transform 0.16s ease;
 }
-.session-expand-enter-from {
+.session-expand-enter-from, .session-expand-leave-to {
   opacity: 0;
   transform: translateY(-4px);
 }
 .session-item {
   display: flex;
   align-items: center;
-  padding: 6px 10px 6px 22px;
+  padding: 7px 10px 7px 22px;
   border-radius: 8px;
   cursor: pointer;
   gap: 8px;
@@ -908,7 +938,7 @@ const filteredProjects = computed(() => {
   background: rgba(255,255,255,0.06);
 }
 .session-item.selected {
-  background: rgba(25, 118, 210, 0.1);
+  background: rgba(25, 118, 210, 0.12);
 }
 /* 选中态左侧强调条 */
 .session-item.selected::before {
@@ -920,30 +950,28 @@ const filteredProjects = computed(() => {
   width: 3px;
   height: 60%;
   border-radius: 2px;
-  background: #1976d2;
+  background: linear-gradient(180deg, #1976d2, #42a5f5);
 }
 .session-item.selected .session-name {
   font-weight: 600;
+  color: #1565c0;
 }
 :global(.dark .session-item.selected) {
-  background: rgba(144, 202, 249, 0.15);
+  background: rgba(144, 202, 249, 0.18);
 }
+:global(.dark .session-item.selected .session-name) { color: #90caf9; }
 :global(.dark .session-item.selected::before) {
-  background: #90caf9;
+  background: linear-gradient(180deg, #90caf9, #42a5f5);
 }
-.session-icon {
-  flex-shrink: 0;
-  opacity: 0.5;
+.session-avatar {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #fff; letter-spacing: 0.02em;
+  cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
 }
-.session-icon-check {
-  display: none;
-  cursor: pointer;
-}
-.session-item:hover .session-icon-file {
-  display: none;
-}
-.session-item:hover .session-icon-check {
-  display: inline;
+.session-avatar:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
 .session-info {
   flex: 1;
@@ -952,7 +980,7 @@ const filteredProjects = computed(() => {
   flex-direction: column;
 }
 .session-name {
-  font-size: 13px;
+  font-size: 13.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1047,6 +1075,7 @@ const filteredProjects = computed(() => {
   color: #ff9800;
   vertical-align: -2px;
   margin-right: 2px;
+  filter: drop-shadow(0 0 2px rgba(255,152,0,0.3));
 }
 
 .empty-sessions {
@@ -1220,15 +1249,15 @@ const filteredProjects = computed(() => {
   z-index: 9999;
   background: #fff;
   border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
   min-width: 148px;
   padding: 4px 0;
 }
 :global(.dark .sidebar-item-menu) {
   background: #2a2a2a;
   border-color: #444;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 .sidebar-item-menu button {
   display: flex;
