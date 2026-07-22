@@ -33,20 +33,24 @@ function scanProjects() {
       if (m > latestMtime) latestMtime = m
     }
 
-    // 读首个 session 文件取 cwd（projectHash 本身无意义）
+    // 只读首个 session 文件头部 16KB 取 cwd（避免大文件全量读）
     if (sessionFiles.length > 0) {
       try {
         const firstFile = path.join(chatsDir, sessionFiles[0])
-        const content = fs.readFileSync(firstFile, 'utf-8')
-        const items = firstFile.endsWith('.jsonl') ? parseJsonl(content) : [JSON.parse(content)]
-        for (const item of items.slice(0, 5)) {
-          // JSONL 格式: session_metadata 首行有 projectPath/cwd
-          if (item.type === 'session_metadata' && item.projectPath) { cwd = item.projectPath; break }
-          // JSON 格式: ConversationRecord 有 directories 数组或通过其他方式
-          if (item.projectHash && item.messages) {
-            // 旧格式没有直接的 cwd，用 projectHash 目录上级猜
-            break
+        if (firstFile.endsWith('.jsonl')) {
+          const fd = fs.openSync(firstFile, 'r')
+          const headSize = Math.min(fs.fstatSync(fd).size, 16 * 1024)
+          const buf = Buffer.alloc(headSize)
+          fs.readSync(fd, buf, 0, headSize, 0)
+          fs.closeSync(fd)
+          const items = parseJsonl(buf.toString('utf-8'))
+          for (const item of items.slice(0, 5)) {
+            if (item.type === 'session_metadata' && item.projectPath) { cwd = item.projectPath; break }
           }
+        } else {
+          const content = fs.readFileSync(firstFile, 'utf-8')
+          const record = JSON.parse(content)
+          if (record.projectHash) { /* 旧 JSON 格式无直接 cwd */ }
         }
       } catch (e) {}
     }

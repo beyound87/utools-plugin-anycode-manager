@@ -186,12 +186,13 @@ function projectsSignature(list) {
 function startAutoRefresh() {
   stopAutoRefresh()
   autoRefreshTimer = setInterval(() => {
-    try {
-      const quick = window.services.getProjectsQuick()
+    // 用增量版本避免同步扫描阻塞 UI
+    window.services.getProjectsIncremental((quick, done) => {
+      if (!done) return
       const sig = projectsSignature(quick)
       if (lastProjectsSig && sig !== lastProjectsSig) loadProjects()
       lastProjectsSig = sig
-    } catch (e) {}
+    })
   }, 8000)
 }
 function stopAutoRefresh() {
@@ -273,24 +274,21 @@ function selectNewestSession() {
 }
 
 // force=true 时清空旧 sessions（手动刷新，展示加载效果）；默认静默刷新不闪烁
-function loadProjects(force = false) {
+function applyProjectsBatch(quickProjects, force) {
   const prevMap = {}
-  for (const p of projects.value) {
-    prevMap[p.name] = p
-  }
+  for (const p of projects.value) prevMap[p.name] = p
+  lastProjectsSig = projectsSignature(quickProjects)
+  projects.value = quickProjects.map(p => {
+    const prev = prevMap[p.name]
+    const keep = !force && prev?.sessionsLoaded
+    return { ...p, sessions: keep ? prev.sessions : [], sessionsLoaded: keep, sessionsLoading: false }
+  })
+  projectsLoaded.value = true
+}
+
+function loadProjects(force = false) {
   try {
-    const quickProjects = window.services.getProjectsQuick()
-    lastProjectsSig = projectsSignature(quickProjects)
-    projects.value = quickProjects.map(p => {
-      const prev = prevMap[p.name]
-      const keep = !force && prev?.sessionsLoaded
-      return {
-        ...p,
-        sessions: keep ? prev.sessions : [],
-        sessionsLoaded: keep,
-        sessionsLoading: false
-      }
-    })
+    applyProjectsBatch(window.services.getProjectsQuick(), force)
   } catch (error) {
     console.error('Failed to load projects:', error)
     showSnackbar('加载项目失败', 'error')
@@ -304,35 +302,45 @@ function loadProjects(force = false) {
   }
 }
 
+// 初始加载：逐 provider 增量扫描，每个之间让出 UI 线程
+function loadProjectsIncremental(onDone) {
+  window.services.getProjectsIncremental((quickProjects, done) => {
+    applyProjectsBatch(quickProjects, false)
+    if (done && onDone) onDone()
+  })
+}
+
 // 异步懒加载某个项目的完整会话列表
 function loadProjectSessionsFor(name) {
   const idx = projects.value.findIndex(p => p.name === name)
   if (idx < 0) return
-  if (projects.value[idx].sessionsLoading) return
-  projects.value = projects.value.map((p, i) =>
-    i === idx ? { ...p, sessionsLoading: true } : p
-  )
-  setTimeout(() => {
-    const currentIdx = projects.value.findIndex(p => p.name === name)
-    if (currentIdx < 0) return
-    const proj = projects.value[currentIdx]
+  const proj = projects.value[idx]
+  if (proj.sessionsLoading) return
+  // 小项目同步加载（无骨架屏闪烁，点击即出结果）；大项目 defer 显示骨架屏
+  const doLoad = () => {
+    const p = projects.value.find(p => p.name === name)
+    if (!p) return
     try {
-      const result = window.services.loadProjectSessions(proj.path, proj.provider, proj)
+      const result = window.services.loadProjectSessions(p.path, p.provider, p)
       const sessions = (result.sessions || []).map(applyOverride)
-      projects.value = projects.value.map((p, i) =>
-        i === currentIdx ? { ...p, sessions, sessionsLoaded: true, sessionsLoading: false } : p
-      )
+      p.sessions = sessions
+      p.sessionsLoaded = true
+      p.sessionsLoading = false
       if (selectedSession.value) {
         const s = sessions.find(s => s.path === selectedSession.value.path)
         if (s) selectedSession.value = { ...selectedSession.value, name: s.name }
       }
     } catch (e) {
       console.error('loadProjectSessions failed:', name, e)
-      projects.value = projects.value.map((p, i) =>
-        i === currentIdx ? { ...p, sessionsLoading: false } : p
-      )
+      p.sessionsLoading = false
     }
-  }, 0)
+  }
+  if (proj.sessionCount <= 50) {
+    doLoad()
+  } else {
+    proj.sessionsLoading = true
+    setTimeout(doLoad, 0)
+  }
 }
 
 function openProjectDir(project) {
@@ -452,21 +460,26 @@ function selectSession(session, fromSearch = false) {
     sidebarRef.value?.expandSubagents(session.parentSessionPath)
   }
   loading.value = true
-  loadSessionContent(session.path)
-  loading.value = false
-  nextTick(() => sessionViewRef.value?.scrollToEnd())
-  window.services.watchSessionFile(session.path, () => {
-    if (selectedSession.value?.path === session.path) {
-      loadSessionContent(session.path, true)
-    }
-    loadProjects()
-    if (selectedSession.value) {
-      for (const p of projects.value) {
-        const s = p.sessions.find(s => s.path === selectedSession.value.path)
-        if (s) { selectedSession.value = { ...selectedSession.value, name: s.name }; break }
+  setTimeout(() => {
+    loadSessionContent(session.path)
+    loading.value = false
+    nextTick(() => sessionViewRef.value?.scrollToEnd())
+    // watcher 在内容加载完成后注册，避免提前触发重复读
+    window.services.watchSessionFile(session.path, () => {
+      if (selectedSession.value?.path === session.path) {
+        loadSessionContent(session.path, true)
       }
-    }
-  })
+      if (!chatWatchSuspended) {
+        loadProjects()
+        if (selectedSession.value) {
+          for (const p of projects.value) {
+            const s = p.sessions.find(s => s.path === selectedSession.value.path)
+            if (s) { selectedSession.value = { ...selectedSession.value, name: s.name }; break }
+          }
+        }
+      }
+    })
+  }, 0)
 }
 
 // ============ 对话功能 ============
@@ -923,22 +936,22 @@ onMounted(() => {
   }
   window.utools.onPluginEnter(({ code }) => {
     if (code === 'sessions') {
-      loadProjects()
-      autoSelectLatestSession()
+      loadProjectsIncremental(() => autoSelectLatestSession())
       startAutoRefresh()
     } else if (code === 'recent-sessions') {
-      loadProjects()
+      loadProjectsIncremental(() => {
+        const t = pendingMainPush
+        pendingMainPush = null
+        if (t && t.sessionPath) {
+          selectSession(applyOverride({
+            provider: t.provider, path: t.sessionPath, sessionId: t.sessionId,
+            name: t.title, cwd: t.cwd, isFavorite: false, subagents: []
+          }))
+        } else {
+          autoSelectLatestSession()
+        }
+      })
       startAutoRefresh()
-      const t = pendingMainPush
-      pendingMainPush = null
-      if (t && t.sessionPath) {
-        selectSession(applyOverride({
-          provider: t.provider, path: t.sessionPath, sessionId: t.sessionId,
-          name: t.title, cwd: t.cwd, isFavorite: false, subagents: []
-        }))
-      } else {
-        autoSelectLatestSession()
-      }
     }
   })
   // 主搜索框推送最近会话（特性检测，部分环境无 onMainPush）
@@ -1144,15 +1157,31 @@ onMounted(() => {
 .app {
   display: flex;
   height: 100vh;
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #f2f3f5;
-  color: #333;
+  --accent: #7c5ce0;
+  --accent-soft: #f0edff;
+  --surface: #ffffff;
+  --surface-subtle: #f8f8fc;
+  --canvas: #f0f1f5;
+  --border: #e2e3ea;
+  --text: #1a1c23;
+  --text-muted: #6b7080;
+  font-family: "Segoe UI Variable", "SF Pro Text", "Microsoft YaHei UI", sans-serif;
+  background: var(--canvas);
+  color: var(--text);
   position: relative;
   overflow: hidden;
 }
 .app.dark {
-  background: #121212;
-  color: #e0e0e0;
+  --accent: #b8a5f0;
+  --accent-soft: #2a2540;
+  --surface: #1e2028;
+  --surface-subtle: #181a22;
+  --canvas: #13151b;
+  --border: #2e3040;
+  --text: #e4e5eb;
+  --text-muted: #9b9fb0;
+  background: var(--canvas);
+  color: var(--text);
 }
 
 .sidebar-toggle {
@@ -1197,7 +1226,7 @@ onMounted(() => {
   cursor: col-resize;
 }
 .sidebar-resizer:hover {
-  background: rgba(25,118,210,0.3);
+  background: rgba(124,92,224,0.3);
 }
 
 .content {
@@ -1275,7 +1304,7 @@ onMounted(() => {
   background: rgba(255,255,255,0.1);
 }
 .fork-resume-btn.confirm {
-  background: #1976d2;
+  background: var(--accent);
   color: #fff;
 }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }

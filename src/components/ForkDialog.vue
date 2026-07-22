@@ -98,13 +98,13 @@ function confirm() {
   font-family: inherit;
 }
 .fork-name-input:focus {
-  border-color: #1976d2;
+  border-color: var(--accent);
 }
 :global(.dark .fork-name-input) {
   border-color: #444;
 }
 :global(.dark .fork-name-input:focus) {
-  border-color: #90caf9;
+  border-color: var(--accent);
 }
 .dialog-actions {
   display: flex;
@@ -133,14 +133,14 @@ function confirm() {
   background: rgba(255,255,255,0.15);
 }
 .dialog-btn.confirm {
-  background: #1976d2;
+  background: var(--accent);
   color: #fff;
 }
 .dialog-btn.confirm:hover:not(:disabled) {
-  background: #1565c0;
+  background: #6a4ecf;
 }
 :global(.dark .dialog-btn.confirm:hover:not(:disabled)) {
-  background: #1565c0;
+  background: #7b68c0;
 }
 .dialog-btn.confirm:disabled {
   opacity: 0.4;

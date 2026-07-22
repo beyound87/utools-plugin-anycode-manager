@@ -109,7 +109,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .option-item input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: #1976d2;
+  accent-color: var(--accent);
   cursor: pointer;
 }
 .option-select {
@@ -146,7 +146,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   background: rgba(255,255,255,0.1);
 }
 .dialog-btn.confirm {
-  background: #1976d2;
+  background: var(--accent);
   color: #fff;
 }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }

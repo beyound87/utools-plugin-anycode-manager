@@ -37,6 +37,22 @@ function getProjectsQuick() {
   return all.sort((a, b) => b.latestMtime - a.latestMtime)
 }
 
+// 增量扫描：逐 provider 扫描，每个之间 yield 给 UI 线程，项目列表逐步出现
+function getProjectsIncremental(onBatch) {
+  const available = providers.filter(p => { try { return p.isAvailable() } catch (e) { return false } })
+  const all = []
+  let i = 0
+  function next() {
+    if (i >= available.length) { onBatch(all, true); return }
+    const p = available[i++]
+    try { all.push(...p.scanProjects()) } catch (e) {}
+    all.sort((a, b) => b.latestMtime - a.latestMtime)
+    onBatch(all, i >= available.length)
+    if (i < available.length) setTimeout(next, 0)
+  }
+  setTimeout(next, 0)
+}
+
 // --- 跨会话全文搜索 ---
 // 文件类 provider（claude/codex/gemini）逐会话 grep 内容；OpenCode 用 SQL。返回匹配会话 + 片段
 function searchSessions(query, opts = {}) {
@@ -308,6 +324,7 @@ function getAllProjects() {
 window.services = {
   getProjectsPath,
   getProjectsQuick,
+  getProjectsIncremental,
   searchSessions,
   getStats,
   loadProjectSessions,

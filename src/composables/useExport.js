@@ -119,6 +119,9 @@ ${css}
 html, body { width: auto; height: auto; overflow: auto; margin: 0; padding: 0; }
 body { max-width: 860px; margin: 0 auto; padding: 24px; padding-bottom: 8px; line-height: 1.6;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --accent: ${isDark ? '#65c8bc' : '#0f766e'}; --accent-soft: ${isDark ? '#19332f' : '#e7f3f1'};
+  --surface: ${isDark ? '#202328' : '#ffffff'}; --canvas: ${isDark ? '#141619' : '#eef1f4'};
+  --border: ${isDark ? '#30353c' : '#dde2e8'}; --text-muted: ${isDark ? '#9ba4af' : '#69717c'};
   background: ${isDark ? '#1a1a1a' : '#f8f9fa'}; color: ${isDark ? '#e0e0e0' : '#1a1a1a'}; }
 .content-body { overflow: visible; height: auto; padding: 0; }
 .message-actions { display: none !important; }

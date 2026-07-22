@@ -262,9 +262,9 @@ function save() {
   box-sizing: border-box;
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
 }
-.setting-input:focus { border-color: #1976d2; }
+.setting-input:focus { border-color: var(--accent); }
 :global(.dark .setting-input) { border-color: #444; }
-:global(.dark .setting-input:focus) { border-color: #90caf9; }
+:global(.dark .setting-input:focus) { border-color: var(--accent); }
 .theme-options {
   display: flex;
   gap: 6px;
@@ -288,9 +288,9 @@ function save() {
   background: rgba(0,0,0,0.04);
 }
 .theme-option.active {
-  border-color: #1976d2;
-  background: rgba(25, 118, 210, 0.08);
-  color: #1976d2;
+  border-color: var(--accent);
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--accent);
   font-weight: 600;
 }
 :global(.dark .theme-option) {
@@ -300,9 +300,9 @@ function save() {
   background: rgba(255,255,255,0.06);
 }
 :global(.dark .theme-option.active) {
-  border-color: #90caf9;
-  background: rgba(144, 202, 249, 0.12);
-  color: #90caf9;
+  border-color: var(--accent);
+  background: rgba(101, 200, 188, 0.12);
+  color: var(--accent);
 }
 .more-examples { margin-top: 6px; }
 .more-examples summary {
@@ -352,9 +352,9 @@ function save() {
   background: rgba(0,0,0,0.04);
 }
 .terminal-preset-btn.active {
-  border-color: #1976d2;
-  background: rgba(25, 118, 210, 0.08);
-  color: #1976d2;
+  border-color: var(--accent);
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--accent);
   font-weight: 600;
 }
 :global(.dark .terminal-preset-btn) {
@@ -364,9 +364,9 @@ function save() {
   background: rgba(255,255,255,0.06);
 }
 :global(.dark .terminal-preset-btn.active) {
-  border-color: #90caf9;
-  background: rgba(144, 202, 249, 0.12);
-  color: #90caf9;
+  border-color: var(--accent);
+  background: rgba(101, 200, 188, 0.12);
+  color: var(--accent);
 }
 .setting-input.error { border-color: #e53935; }
 :global(.dark .setting-input.error) { border-color: #ef5350; }
@@ -380,12 +380,12 @@ function save() {
   padding: 5px 16px;
   border: none;
   border-radius: 6px;
-  background: #1976d2;
+  background: var(--accent);
   color: #fff;
   font-size: 13px;
   cursor: pointer;
 }
-.setting-save-btn:hover { background: #1565c0; }
-:global(.dark) .setting-save-btn { background: #42a5f5; }
-:global(.dark) .setting-save-btn:hover { background: #1e88e5; }
+.setting-save-btn:hover { background: #6a4ecf; }
+:global(.dark) .setting-save-btn { background: #7b68c0; }
+:global(.dark) .setting-save-btn:hover { background: #348b82; }
 </style>

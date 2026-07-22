@@ -1,7 +1,7 @@
 /* Markdown rendered content */
 .md-content {
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.62;
   word-break: break-word;
 }
 .md-content p {
@@ -58,6 +58,9 @@
   margin: 8px 0;
   font-size: 13px;
   width: 100%;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
 }
 .md-content th, .md-content td {
   border: 1px solid rgba(0,0,0,0.12);
@@ -76,14 +79,20 @@
 }
 
 .md-content a {
-  color: #1976d2;
+  color: var(--accent);
   text-decoration: none;
 }
 .md-content a:hover {
   text-decoration: underline;
 }
+.md-content a:visited {
+  color: #6f4ca0;
+}
 .dark .md-content a {
-  color: #90caf9;
+  color: var(--accent);
+}
+.dark .md-content a:visited {
+  color: #c4a7e7;
 }
 
 .md-content hr {
@@ -102,29 +111,33 @@
 /* Code block with copy button */
 .code-block-wrapper {
   margin: 6px 0;
-  border-radius: 10px;
+  border-radius: 7px;
   overflow: hidden;
   background: rgba(0,0,0,0.04);
+  border: 1px solid rgba(0,0,0,0.06);
 }
 .dark .code-block-wrapper {
   background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.08);
 }
 .code-block-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 10px;
+  padding: 5px 10px;
   font-size: 11px;
   opacity: 0.7;
   border-bottom: 1px solid rgba(0,0,0,0.06);
+  background: rgba(0,0,0,0.02);
 }
 .dark .code-block-header {
   border-bottom-color: rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.03);
 }
 .code-lang {
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
 }
 .code-copy-btn {
   border: none;

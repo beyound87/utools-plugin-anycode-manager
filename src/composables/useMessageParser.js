@@ -274,39 +274,39 @@ export function useDisplayMessages(sessionContent) {
       if (merged.length > 0) {
         const prev = merged[merged.length - 1]
         const prevRole = prev.message?.role || prev.type
+        if (!Array.isArray(prev.message.content)) prev.message.content = []
         if (isMetaInjection && prevRole === 'user') {
           const metaBlocks = blocks
             .filter(b => b.type === 'text' && b.text)
             .map(b => ({ type: 'meta', text: b.text }))
-          prev.message.content = [...(Array.isArray(prev.message.content) ? prev.message.content : []), ...metaBlocks]
+          prev.message.content.push(...metaBlocks)
           if (item.uuid) prev.lastUuid = item.uuid
           continue
         }
         if (role === 'assistant' && prevRole === 'assistant') {
-          prev.message.content = [...(Array.isArray(prev.message.content) ? prev.message.content : []), ...blocks]
+          prev.message.content.push(...blocks)
           if (msg.stop_reason) prev.message.stop_reason = msg.stop_reason
           if (item.uuid) prev.lastUuid = item.uuid
           accumulateStats(prev, item)
           continue
         }
         if (isToolResponse && prevRole === 'assistant') {
-          // Convert text blocks from sourceToolUseID messages to tool_result
           const mergeBlocks = item.sourceToolUseID && blocks.every(b => b.type === 'text')
             ? blocks.map(b => ({ type: 'tool_result', tool_use_id: item.sourceToolUseID, content: b.text || '' }))
             : blocks
-          prev.message.content = [...(Array.isArray(prev.message.content) ? prev.message.content : []), ...mergeBlocks]
+          prev.message.content.push(...mergeBlocks)
           if (item.uuid) prev.lastUuid = item.uuid
           continue
         }
         if (isSystemInjection && prevRole === 'assistant') {
           const prevContent = prev.message.content
-          const lastToolUse = [...prevContent].reverse().find(b => b.type === 'tool_use')
-          const converted = blocks.map(b => ({
-            type: 'tool_result',
-            tool_use_id: lastToolUse?.id || '',
-            content: b.text || ''
-          }))
-          prev.message.content = [...prevContent, ...converted]
+          let lastToolUseId = ''
+          for (let k = prevContent.length - 1; k >= 0; k--) {
+            if (prevContent[k].type === 'tool_use') { lastToolUseId = prevContent[k].id || ''; break }
+          }
+          for (const b of blocks) {
+            prevContent.push({ type: 'tool_result', tool_use_id: lastToolUseId, content: b.text || '' })
+          }
           if (item.uuid) prev.lastUuid = item.uuid
           continue
         }

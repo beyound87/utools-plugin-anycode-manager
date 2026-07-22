@@ -458,7 +458,7 @@ const filteredProjects = computed(() => {
                 >{{ expandedSubagents.has(session.path) ? '▾' : '▸' }}</span>
                 <!-- 文件图标 / 复选框 -->
                 <span v-if="multiSelectMode || selectedPaths.has(session.path)" class="multi-check" @click.stop="toggleSelect(session)">
-                  <IconCheckboxChecked v-if="selectedPaths.has(session.path)" style="color: #1976d2" />
+                  <IconCheckboxChecked v-if="selectedPaths.has(session.path)" style="color: var(--accent)" />
                   <IconCheckbox v-else />
                 </span>
                 <template v-else>
@@ -602,7 +602,7 @@ const filteredProjects = computed(() => {
 .provider-filter {
   display: flex;
   gap: 4px;
-  padding: 4px 12px 6px;
+  padding: 6px 12px 8px;
   flex-wrap: nowrap;
   overflow-x: auto;
 }
@@ -611,21 +611,21 @@ const filteredProjects = computed(() => {
   align-items: center;
   gap: 3px;
   padding: 2px 7px;
-  border: 1px solid #e0e0e0;
-  border-radius: 12px;
-  background: none;
+  border: none;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.05);
   color: inherit;
   font-size: 11px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all 0.15s ease;
   white-space: nowrap;
   flex-shrink: 0;
 }
-.provider-chip:hover { background: rgba(0,0,0,0.04); }
-.provider-chip.active { border-color: #1976d2; background: rgba(25,118,210,0.08); color: #1976d2; font-weight: 600; box-shadow: 0 1px 4px rgba(25,118,210,0.15); }
-:global(.dark .provider-chip) { border-color: #444; }
-:global(.dark .provider-chip:hover) { background: rgba(255,255,255,0.06); }
-:global(.dark .provider-chip.active) { border-color: #90caf9; background: rgba(144,202,249,0.12); color: #90caf9; box-shadow: 0 1px 4px rgba(144,202,249,0.15); }
+.provider-chip:hover { background: rgba(0,0,0,0.09); }
+.provider-chip.active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+:global(.dark .provider-chip) { background: rgba(255,255,255,0.06); }
+:global(.dark .provider-chip:hover) { background: rgba(255,255,255,0.1); }
+:global(.dark .provider-chip.active) { background: rgba(184,165,240,0.12); color: var(--accent); }
 .provider-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .provider-badge {
   font-size: 9px;
@@ -650,10 +650,10 @@ const filteredProjects = computed(() => {
 .search-result-head { display: flex; align-items: center; gap: 6px; }
 .search-result-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .search-result-count {
-  font-size: 10px; background: rgba(25,118,210,0.15); color: #1976d2;
+  font-size: 10px; background: rgba(124,92,224,0.12); color: var(--accent);
   padding: 0 6px; border-radius: 8px; line-height: 16px; flex-shrink: 0;
 }
-:global(.dark .search-result-count) { background: rgba(144,202,249,0.2); color: #90caf9; }
+:global(.dark .search-result-count) { background: rgba(184,165,240,0.16); color: var(--accent); }
 .search-result-snippet {
   font-size: 11px; opacity: 0.7; margin-top: 3px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
@@ -664,8 +664,8 @@ const filteredProjects = computed(() => {
   min-width: 320px;
   display: flex;
   flex-direction: column;
-  background: #f5f6f8;
-  border-right: 1px solid #e8e8e8;
+  background: var(--surface-subtle);
+  border-right: 1px solid var(--border);
   flex-shrink: 0;
   transition: margin-left 0.2s;
   z-index: 20;
@@ -673,35 +673,32 @@ const filteredProjects = computed(() => {
 .sidebar.collapsed {
   margin-left: -320px;
 }
-:global(.dark .sidebar) {
-  background: #181a1e;
-  border-color: #2a2a2a;
-}
 
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
-  min-height: 46px;
+  padding: 8px 12px;
+  min-height: 40px;
   box-sizing: border-box;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+:global(.dark .sidebar-header) {
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
 }
 .sidebar-header h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
 }
 .header-actions {
   display: flex;
   gap: 2px;
 }
 .sidebar-divider {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0,0,0,0.08), transparent);
-}
-:global(.dark .sidebar-divider) {
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  height: 0;
 }
 
 .search-bar {
@@ -715,21 +712,18 @@ const filteredProjects = computed(() => {
   align-items: center;
   flex: 1;
   margin: 0 0 0 8px;
-  padding: 2px 10px;
-  border-radius: 10px;
-  background: rgba(0,0,0,0.04);
+  padding: 5px 12px;
+  border-radius: 7px;
+  background: var(--surface);
   gap: 8px;
-  border: 1px solid transparent;
-  transition: border-color 0.15s;
+  border: 1px solid var(--border);
+  transition: border-color 0.15s ease;
 }
 .search-box:focus-within {
-  border-color: rgba(25,118,210,0.4);
-}
-:global(.dark .search-box) {
-  background: rgba(255,255,255,0.06);
+  border-color: rgba(124,92,224,0.45);
 }
 :global(.dark .search-box:focus-within) {
-  border-color: rgba(144,202,249,0.3);
+  border-color: rgba(184,165,240,0.4);
 }
 .search-icon {
   flex-shrink: 0;
@@ -761,6 +755,7 @@ const filteredProjects = computed(() => {
   color: inherit;
   opacity: 0.4;
   flex-shrink: 0;
+  transition: all 0.15s ease;
 }
 .search-clear:hover {
   opacity: 0.8;
@@ -782,6 +777,7 @@ const filteredProjects = computed(() => {
   cursor: pointer;
   color: inherit;
   opacity: 0.7;
+  transition: all 0.15s ease;
 }
 .icon-btn:hover {
   opacity: 1;
@@ -804,6 +800,7 @@ const filteredProjects = computed(() => {
   color: inherit;
   opacity: 0.5;
   flex-shrink: 0;
+  transition: all 0.15s ease;
 }
 .icon-btn-sm:hover {
   opacity: 1;
@@ -816,23 +813,23 @@ const filteredProjects = computed(() => {
 .sidebar-list {
   flex: 1;
   overflow: auto;
-  padding: 4px 8px;
+  padding: 2px 6px;
 }
 
 .project-item {
   display: flex;
   align-items: center;
-  padding: 6px 10px;
-  min-height: 38px;
-  border-radius: 8px;
+  padding: 3px 10px;
+  min-height: 32px;
+  border-radius: 6px;
   cursor: pointer;
   gap: 6px;
   user-select: none;
   box-sizing: border-box;
-  transition: background 0.13s ease;
+  transition: background 0.15s ease;
 }
 .project-item:hover {
-  background: rgba(0,0,0,0.04);
+  background: rgba(0,0,0,0.06);
 }
 :global(.dark .project-item:hover) {
   background: rgba(255,255,255,0.06);
@@ -845,17 +842,18 @@ const filteredProjects = computed(() => {
   flex-shrink: 0;
 }
 .folder-icon {
-  color: #1976d2;
+  color: var(--accent);
   flex-shrink: 0;
+  opacity: 0.7;
 }
 :global(.dark .folder-icon) {
-  color: #90caf9;
+  color: var(--accent);
 }
 .project-name {
   flex: 1;
   min-width: 0;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -902,13 +900,11 @@ const filteredProjects = computed(() => {
 }
 
 .project-group {
-  margin-bottom: 6px; padding-bottom: 6px;
-  border-bottom: 1px solid rgba(0,0,0,0.04);
+  margin-bottom: 1px; padding-bottom: 0;
 }
-.project-group:last-child { border-bottom: none; margin-bottom: 0; }
-:global(.dark) .project-group { border-bottom-color: rgba(255,255,255,0.04); }
+.project-group:last-child { margin-bottom: 0; }
 .session-list {
-  padding-left: 10px;
+  padding-left: 6px;
 }
 /* 展开/收起动画：仅 opacity + transform，GPU 加速不触发 layout */
 .session-expand-enter-active, .session-expand-leave-active {
@@ -921,24 +917,24 @@ const filteredProjects = computed(() => {
 .session-item {
   display: flex;
   align-items: center;
-  padding: 7px 10px 7px 22px;
-  border-radius: 8px;
+  padding: 3px 10px 3px 22px;
+  border-radius: 6px;
   cursor: pointer;
-  gap: 8px;
+  gap: 6px;
   position: relative;
-  transition: background 0.13s ease;
+  transition: background 0.15s ease;
 }
 .session-item.has-subtoggle {
   padding-left: 0;
 }
 .session-item:hover {
-  background: rgba(0,0,0,0.04);
+  background: rgba(0,0,0,0.06);
 }
 :global(.dark .session-item:hover) {
-  background: rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.08);
 }
 .session-item.selected {
-  background: rgba(25, 118, 210, 0.12);
+  background: var(--accent-soft);
 }
 /* 选中态左侧强调条 */
 .session-item.selected::before {
@@ -948,30 +944,31 @@ const filteredProjects = computed(() => {
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
-  height: 60%;
-  border-radius: 2px;
-  background: linear-gradient(180deg, #1976d2, #42a5f5);
+  height: 50%;
+  border-radius: 3px;
+  background: var(--accent);
 }
 .session-item.selected .session-name {
   font-weight: 600;
-  color: #1565c0;
+  color: var(--accent);
 }
 :global(.dark .session-item.selected) {
-  background: rgba(144, 202, 249, 0.18);
+  background: rgba(101, 200, 188, 0.14);
 }
-:global(.dark .session-item.selected .session-name) { color: #90caf9; }
+:global(.dark .session-item.selected .session-name) { color: var(--accent); }
 :global(.dark .session-item.selected::before) {
-  background: linear-gradient(180deg, #90caf9, #42a5f5);
+  background: var(--accent);
 }
 .session-avatar {
-  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
+  width: 24px; height: 24px; border-radius: 5px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 700; color: #fff; letter-spacing: 0.02em;
-  cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  font-size: 9px; font-weight: 700; color: #fff; letter-spacing: 0;
+  cursor: pointer; transition: all 0.15s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
 .session-avatar:hover {
-  transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  filter: brightness(1.08);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
 .session-info {
   flex: 1;
@@ -980,13 +977,13 @@ const filteredProjects = computed(() => {
   flex-direction: column;
 }
 .session-name {
-  font-size: 13.5px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .session-meta {
-  font-size: 11px;
+  font-size: 10.5px;
   opacity: 0.6;
 }
 .session-actions {
@@ -1010,6 +1007,7 @@ const filteredProjects = computed(() => {
   cursor: pointer;
   color: inherit;
   opacity: 0.5;
+  transition: all 0.15s ease;
 }
 .action-btn:hover {
   opacity: 1;
@@ -1029,7 +1027,7 @@ const filteredProjects = computed(() => {
 
 .icon-btn-sm.active {
   opacity: 1;
-  color: #1976d2;
+  color: var(--accent);
 }
 .multi-select-bar {
   display: flex;
@@ -1037,8 +1035,8 @@ const filteredProjects = computed(() => {
   gap: 8px;
   padding: 4px 12px;
   font-size: 12px;
-  background: rgba(25, 118, 210, 0.08);
-  border-bottom: 1px solid rgba(25, 118, 210, 0.2);
+  background: rgba(15, 118, 110, 0.08);
+  border-bottom: 1px solid rgba(15, 118, 110, 0.18);
 }
 .batch-delete-btn {
   border: none;
@@ -1086,18 +1084,19 @@ const filteredProjects = computed(() => {
 .memory-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px 6px 22px;
-  border-radius: 8px;
+  gap: 6px;
+  padding: 3px 10px 3px 22px;
+  border-radius: 6px;
   cursor: pointer;
   margin-bottom: 2px;
   border-bottom: 1px solid rgba(0,0,0,0.06);
+  transition: background 0.15s ease;
 }
 .memory-item:hover {
   background: rgba(0,0,0,0.04);
 }
 .memory-item.selected {
-  background: rgba(25, 118, 210, 0.1);
+  background: rgba(15, 118, 110, 0.1);
 }
 :global(.dark .memory-item) {
   border-bottom-color: rgba(255,255,255,0.07);
@@ -1106,15 +1105,15 @@ const filteredProjects = computed(() => {
   background: rgba(255,255,255,0.06);
 }
 :global(.dark .memory-item.selected) {
-  background: rgba(144, 202, 249, 0.15);
+  background: rgba(101, 200, 188, 0.14);
 }
 .memory-item-icon {
   flex-shrink: 0;
   opacity: 0.6;
-  color: #1976d2;
+  color: var(--accent);
 }
 :global(.dark .memory-item-icon) {
-  color: #90caf9;
+  color: var(--accent);
 }
 .memory-item-label {
   font-size: 13px;
@@ -1190,6 +1189,7 @@ const filteredProjects = computed(() => {
   border-radius: 8px;
   cursor: pointer;
   gap: 8px;
+  transition: background 0.15s ease;
 }
 .subagent-item:hover {
   background: rgba(0,0,0,0.04);
@@ -1215,13 +1215,13 @@ const filteredProjects = computed(() => {
   width: 24px;
   height: 24px;
   border: 3px solid rgba(0,0,0,0.1);
-  border-top-color: #1976d2;
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: sidebar-spin 0.8s linear infinite;
 }
 :global(.dark .sidebar-spinner) {
   border-color: rgba(255,255,255,0.1);
-  border-top-color: #90caf9;
+  border-top-color: var(--accent);
 }
 @keyframes sidebar-spin {
   to { transform: rotate(360deg); }
@@ -1247,17 +1247,19 @@ const filteredProjects = computed(() => {
 .sidebar-item-menu {
   position: fixed;
   z-index: 9999;
-  background: #fff;
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(0,0,0,0.12);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.15);
   min-width: 148px;
   padding: 4px 0;
 }
 :global(.dark .sidebar-item-menu) {
-  background: #2a2a2a;
+  background: rgba(40,40,44,0.92);
   border-color: #444;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.4);
 }
 .sidebar-item-menu button {
   display: flex;
@@ -1272,6 +1274,7 @@ const filteredProjects = computed(() => {
   text-align: left;
   cursor: pointer;
   font-family: inherit;
+  transition: background 0.15s ease;
 }
 .sidebar-item-menu button:hover {
   background: rgba(0,0,0,0.05);
@@ -1313,6 +1316,7 @@ const filteredProjects = computed(() => {
   color: inherit;
   opacity: 0.35;
   flex-shrink: 0;
+  transition: all 0.15s ease;
 }
 .search-filter-btn:hover {
   opacity: 0.7;
@@ -1320,10 +1324,12 @@ const filteredProjects = computed(() => {
 }
 .search-filter-btn.active {
   opacity: 1;
-  color: #1976d2;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 :global(.dark .search-filter-btn.active) {
-  color: #90caf9;
+  background: rgba(184,165,240,0.12);
+  color: var(--accent);
 }
 :global(.dark .search-filter-btn:hover) {
   background: rgba(255,255,255,0.1);
@@ -1334,12 +1340,12 @@ const filteredProjects = computed(() => {
   right: 2px;
   width: 5px;
   height: 5px;
-  background: #1976d2;
+  background: var(--accent);
   border-radius: 50%;
   pointer-events: none;
 }
 :global(.dark .filter-dot) {
-  background: #90caf9;
+  background: var(--accent);
 }
 
 .filter-dropdown {
@@ -1373,6 +1379,7 @@ const filteredProjects = computed(() => {
   font-size: 13px;
   cursor: pointer;
   user-select: none;
+  transition: background 0.15s ease;
 }
 .filter-option:hover {
   background: rgba(0,0,0,0.04);
@@ -1384,7 +1391,7 @@ const filteredProjects = computed(() => {
   width: 14px;
   height: 14px;
   cursor: pointer;
-  accent-color: #1976d2;
+  accent-color: var(--accent);
   flex-shrink: 0;
 }
 

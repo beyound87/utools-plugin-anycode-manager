@@ -111,32 +111,32 @@ function launchInTerminal(cmd, cwd, terminalApp) {
   }
 }
 
-// ponytail: 大文件优化 — 超过阈值时只读最后 N 行，首次打开快
-const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024 // 5MB
-const TAIL_READ_SIZE = 2 * 1024 * 1024 // 读尾部 2MB
-
-function readFileTail(filePath, tailSize) {
-  const stat = fs.statSync(filePath)
-  if (stat.size <= tailSize) return fs.readFileSync(filePath, 'utf-8')
-  const fd = fs.openSync(filePath, 'r')
-  const buf = Buffer.alloc(tailSize)
-  fs.readSync(fd, buf, 0, tailSize, stat.size - tailSize)
-  fs.closeSync(fd)
-  const text = buf.toString('utf-8')
-  // 跳过第一行（可能是截断的 JSON）
-  const firstNewline = text.indexOf('\n')
-  return firstNewline >= 0 ? text.slice(firstNewline + 1) : text
-}
+// ponytail: 大文件只读尾部，小文件全量读
+const SMART_READ_THRESHOLD = 2 * 1024 * 1024 // 2MB 以下全量读
+const SMART_READ_TAIL = 2 * 1024 * 1024      // 大文件只读最后 2MB（覆盖数百条消息，配合前端分页足够）
 
 function readSessionFileSmart(filePath) {
   if (!fs.existsSync(filePath)) return { items: [], truncated: false }
   const stat = fs.statSync(filePath)
-  if (stat.size <= LARGE_FILE_THRESHOLD) {
+  if (stat.size <= SMART_READ_THRESHOLD) {
     return { items: parseJsonl(fs.readFileSync(filePath, 'utf-8')), truncated: false }
   }
-  // 大文件：先读尾部
-  const tailContent = readFileTail(filePath, TAIL_READ_SIZE)
-  return { items: parseJsonl(tailContent), truncated: true, totalSize: stat.size }
+  // 大文件：只读尾部
+  const fd = fs.openSync(filePath, 'r')
+  try {
+    const tailSize = Math.min(stat.size, SMART_READ_TAIL)
+    const buf = Buffer.alloc(tailSize)
+    fs.readSync(fd, buf, 0, tailSize, stat.size - tailSize)
+    let text = buf.toString('utf-8')
+    // 跳过首行（可能是截断的不完整 JSON）
+    if (stat.size > tailSize) {
+      const nl = text.indexOf('\n')
+      if (nl >= 0) text = text.slice(nl + 1)
+    }
+    return { items: parseJsonl(text), truncated: stat.size > tailSize }
+  } finally {
+    fs.closeSync(fd)
+  }
 }
 
 // ponytail: 会话内容 grep — 大文件只读首尾各 1MB（覆盖多数会话全文，超大文件搜首尾）
@@ -170,4 +170,4 @@ function grepSessionFile(filePath, query, caseSensitive) {
   } catch (e) { return null }
 }
 
-module.exports = { fs, path, os, isSystemText, parseJsonl, spawnDetached, launchInTerminal, readSessionFileSmart, LARGE_FILE_THRESHOLD, grepSessionFile }
+module.exports = { fs, path, os, isSystemText, parseJsonl, spawnDetached, launchInTerminal, readSessionFileSmart, grepSessionFile }

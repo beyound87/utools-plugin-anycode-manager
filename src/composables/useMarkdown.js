@@ -37,7 +37,10 @@ export function renderMarkdown(text) {
   let html = renderCache.get(text)
   if (html !== undefined) return html
   html = md.render(text)
-  if (renderCache.size >= CACHE_MAX) renderCache.clear()
+  if (renderCache.size >= CACHE_MAX) {
+    const first = renderCache.keys().next().value
+    renderCache.delete(first)
+  }
   renderCache.set(text, html)
   return html
 }

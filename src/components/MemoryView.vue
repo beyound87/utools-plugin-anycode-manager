@@ -556,11 +556,11 @@ onUnmounted(() => {
 .memory-spinner {
   width: 28px; height: 28px;
   border: 3px solid rgba(0,0,0,0.1);
-  border-top-color: #1976d2;
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-:global(.dark .memory-spinner) { border-color: rgba(255,255,255,0.1); border-top-color: #90caf9; }
+:global(.dark .memory-spinner) { border-color: rgba(255,255,255,0.1); border-top-color: var(--accent); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .memory-files {
@@ -623,11 +623,11 @@ onUnmounted(() => {
   background: transparent; color: inherit;
   border-radius: 4px; font-size: 12px; cursor: pointer; font-family: inherit; opacity: 0.5;
 }
-.file-save-btn.dirty { border-color: #1976d2; color: #1976d2; opacity: 1; }
+.file-save-btn.dirty { border-color: var(--accent); color: var(--accent); opacity: 1; }
 .file-save-btn:disabled { cursor: default; }
-.file-save-btn.dirty:hover { background: rgba(25,118,210,0.06); }
-:global(.dark .file-save-btn.dirty) { border-color: #90caf9; color: #90caf9; }
-:global(.dark .file-save-btn.dirty:hover) { background: rgba(144,202,249,0.08); }
+.file-save-btn.dirty:hover { background: rgba(124,92,224,0.06); }
+:global(.dark .file-save-btn.dirty) { border-color: var(--accent); color: var(--accent); }
+:global(.dark .file-save-btn.dirty:hover) { background: rgba(184,165,240,0.08); }
 
 .unreferenced-badge {
   font-size: 11px;
@@ -794,7 +794,7 @@ onUnmounted(() => {
 .confirm-ok {
   padding: 6px 14px; border: none; border-radius: 6px;
   font-size: 13px; cursor: pointer; font-family: inherit;
-  background: #1976d2; color: #fff;
+  background: var(--accent); color: #fff;
 }
 .confirm-ok.danger { background: #d32f2f; }
 .confirm-ok:hover { filter: brightness(1.1); }
