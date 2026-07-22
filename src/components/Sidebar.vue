@@ -953,7 +953,7 @@ const filteredProjects = computed(() => {
   color: var(--accent);
 }
 :global(.dark .session-item.selected) {
-  background: rgba(101, 200, 188, 0.14);
+  background: var(--accent-soft);
 }
 :global(.dark .session-item.selected .session-name) { color: var(--accent); }
 :global(.dark .session-item.selected::before) {
@@ -1064,6 +1064,9 @@ const filteredProjects = computed(() => {
 .batch-cancel-btn:hover {
   background: rgba(0,0,0,0.06);
 }
+:global(.dark .batch-cancel-btn:hover) {
+  background: rgba(255,255,255,0.08);
+}
 .multi-check {
   flex-shrink: 0;
   cursor: pointer;
@@ -1096,7 +1099,7 @@ const filteredProjects = computed(() => {
   background: rgba(0,0,0,0.04);
 }
 .memory-item.selected {
-  background: rgba(15, 118, 110, 0.1);
+  background: var(--accent-soft);
 }
 :global(.dark .memory-item) {
   border-bottom-color: rgba(255,255,255,0.07);
@@ -1105,7 +1108,7 @@ const filteredProjects = computed(() => {
   background: rgba(255,255,255,0.06);
 }
 :global(.dark .memory-item.selected) {
-  background: rgba(101, 200, 188, 0.14);
+  background: var(--accent-soft);
 }
 .memory-item-icon {
   flex-shrink: 0;
@@ -1195,13 +1198,13 @@ const filteredProjects = computed(() => {
   background: rgba(0,0,0,0.04);
 }
 .subagent-item.selected {
-  background: rgba(103, 58, 183, 0.1);
+  background: var(--accent-soft);
 }
 :global(.dark .subagent-item:hover) {
   background: rgba(255,255,255,0.06);
 }
 :global(.dark .subagent-item.selected) {
-  background: rgba(179, 157, 219, 0.15);
+  background: var(--accent-soft);
 }
 .subagent-icon {
   flex-shrink: 0;
@@ -1351,17 +1354,18 @@ const filteredProjects = computed(() => {
 .filter-dropdown {
   position: fixed;
   z-index: 9999;
-  background: #fff;
-  border: 1px solid rgba(0,0,0,0.12);
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0,0,0,0.15);
   min-width: 160px;
   padding: 6px 0 8px;
 }
 :global(.dark .filter-dropdown) {
-  background: #2a2a2a;
-  border-color: #444;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  background: rgba(40,40,44,0.92);
+  border-color: var(--border);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.4);
 }
 .filter-dropdown-title {
   font-size: 11px;

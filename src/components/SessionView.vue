@@ -951,7 +951,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
       <!-- 步骤一：选择文件 -->
       <template v-if="snapshotDialog.step === 1">
         <div class="restore-dialog-header">
-          <IconRestore :size="16" style="color: #00897b" />
+          <IconRestore :size="16" style="color: var(--accent)" />
           <span>恢复文件到此快照</span>
           <span class="restore-step-hint">第 1 步 / 共 2 步</span>
         </div>
@@ -985,7 +985,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
       <!-- 步骤二：diff 预览 -->
       <template v-else>
         <div class="restore-dialog-header">
-          <IconRestore :size="16" style="color: #00897b" />
+          <IconRestore :size="16" style="color: var(--accent)" />
           <span>变更预览</span>
           <span class="restore-step-hint">第 2 步 / 共 2 步</span>
         </div>
@@ -1138,17 +1138,19 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   right: 0;
   top: 100%;
   z-index: 100;
-  background: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0,0,0,0.15);
   overflow: visible;
   min-width: 160px;
   padding: 4px 0;
 }
 :global(.dark .more-menu) {
-  background: #2a2a2a;
-  border-color: #444;
+  background: rgba(40,40,44,0.92);
+  border-color: var(--border);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.4);
 }
 .more-menu button, .menu-sub-trigger {
   display: flex;
@@ -2017,7 +2019,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
 :global(.dark .xml-ide) { background: rgba(156, 39, 176, 0.08); }
 :global(.dark .xml-ide .xml-tag-label) { color: #ce93d8; background: rgba(156, 39, 176, 0.18); }
 .xml-task { background: rgba(0, 150, 136, 0.06); border-color: #009688; }
-.xml-task .xml-tag-label { background: rgba(0, 150, 136, 0.12); color: #00695c; }
+.xml-task .xml-tag-label { background: rgba(0, 150, 136, 0.12); color: var(--accent); }
 :global(.dark .xml-task) { background: rgba(0, 150, 136, 0.08); }
 :global(.dark .xml-task .xml-tag-label) { color: #80cbc4; background: rgba(0, 150, 136, 0.18); }
 
@@ -2204,21 +2206,21 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   padding: 1px 7px;
   border-radius: 10px;
   background: rgba(0, 137, 123, 0.12);
-  color: #00695c;
+  color: var(--accent);
   border: 1px solid rgba(0, 137, 123, 0.25);
 }
 :global(.dark .snapshot-badge) {
   background: rgba(77, 182, 172, 0.15);
-  color: #4db6ac;
+  color: var(--accent);
   border-color: rgba(77, 182, 172, 0.3);
 }
 .snapshot-meta {
   font-size: 11px;
-  color: #00695c;
+  color: var(--accent);
   opacity: 0.8;
 }
 :global(.dark .snapshot-meta) {
-  color: #4db6ac;
+  color: var(--accent);
 }
 .snapshot-file-count {
   font-size: 11px;
@@ -2234,7 +2236,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   border-radius: 12px;
   border: 1px solid rgba(0, 137, 123, 0.35);
   background: rgba(0, 137, 123, 0.08);
-  color: #00695c;
+  color: var(--accent);
   cursor: pointer;
   font-weight: 500;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;
@@ -2243,7 +2245,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
 :global(.dark .snapshot-restore-btn) {
   border-color: rgba(77, 182, 172, 0.35);
   background: rgba(77, 182, 172, 0.1);
-  color: #4db6ac;
+  color: var(--accent);
 }
 .snapshot-bar:hover .snapshot-restore-btn {
   opacity: 1;
@@ -2266,15 +2268,15 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 4px;
-  background: rgba(0, 137, 123, 0.07);
-  color: #00695c;
-  border: 1px solid rgba(0, 137, 123, 0.18);
+  background: rgba(124,92,224,0.07);
+  color: var(--accent);
+  border: 1px solid rgba(124,92,224,0.18);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   word-break: break-all;
 }
 :global(.dark .snapshot-file-chip) {
   background: rgba(77, 182, 172, 0.1);
-  color: #4db6ac;
+  color: var(--accent);
   border-color: rgba(77, 182, 172, 0.2);
 }
 
@@ -2368,7 +2370,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   width: 14px;
   height: 14px;
   cursor: pointer;
-  accent-color: #00897b;
+  accent-color: var(--accent);
 }
 .restore-file-path {
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
@@ -2381,13 +2383,13 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: rgba(0, 137, 123, 0.1);
-  color: #00695c;
-  border: 1px solid rgba(0, 137, 123, 0.2);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid rgba(124,92,224,0.2);
 }
 :global(.dark .restore-file-version) {
   background: rgba(77, 182, 172, 0.12);
-  color: #4db6ac;
+  color: var(--accent);
   border-color: rgba(77, 182, 172, 0.25);
 }
 .restore-warn {
@@ -2441,7 +2443,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   padding: 7px 18px;
   border: none;
   border-radius: 6px;
-  background: #00897b;
+  background: var(--accent);
   color: #fff;
   font-size: 13px;
   font-weight: 500;
@@ -2450,7 +2452,7 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   transition: background 0.15s, opacity 0.15s;
 }
 .restore-btn-confirm:hover {
-  background: #00796b;
+  background: #6a4ecf;
 }
 .restore-btn-confirm:disabled {
   opacity: 0.6;
@@ -2503,13 +2505,13 @@ defineExpose({ contentBodyRef, isScrolledToBottom, scrollToEnd })
   opacity: 1;
   background: rgba(0,137,123,0.08);
   border-color: rgba(0,137,123,0.35);
-  color: #00695c;
+  color: var(--accent);
 }
 :global(.dark .restore-diff-tab) { border-color: rgba(255,255,255,0.12); }
 :global(.dark .restore-diff-tab.active) {
   background: rgba(77,182,172,0.12);
   border-color: rgba(77,182,172,0.35);
-  color: #4db6ac;
+  color: var(--accent);
 }
 .restore-diff-tab.unchanged { opacity: 0.35; }
 .diff-tab-del { color: #d32f2f; font-weight: 600; font-size: 11px; }

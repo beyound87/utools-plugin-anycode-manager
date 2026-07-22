@@ -205,7 +205,7 @@ const currentPermLabel = computed(() => PERM_MODES.find(m => m.value === props.p
 }
 .start-btn:hover { background: #6a4ecf; box-shadow: 0 4px 12px rgba(124,92,224,0.3); }
 :global(.dark) .start-btn { background: var(--accent); }
-:global(.dark) .start-btn:hover { background: #68b9b0; }
+:global(.dark) .start-btn:hover { background: #9580d8; }
 
 /* ========== 激活态 ========== */
 .composer {
